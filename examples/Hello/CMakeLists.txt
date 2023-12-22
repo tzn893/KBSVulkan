@@ -1,6 +1,10 @@
 add_executable(Hello ${CMAKE_CURRENT_SOURCE_DIR}/Hello.cpp)
 target_link_libraries(Hello kbs)
 
+if(KBS_CORE_DLL)
+	add_compile_definitions(KBS_CORE_DLL)
+endif()
+
 if (WIN32)
 	add_compile_definitions(KBS_PLATFORM_WINDOWS)
 endif()
