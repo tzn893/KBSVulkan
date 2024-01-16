@@ -32,7 +32,6 @@ namespace kbs
 		quat rotation;
 		vec3 scale;
 
-
 		TransformComponent() = default;
 		TransformComponent(const TransformComponent&) = default;
 		TransformComponent(vec3 position, quat rotation, vec3 scale)
@@ -66,9 +65,35 @@ namespace kbs
 		}
 	};
 
+	struct RenderableComponent
+	{
+		// uuid of material in material manager
+		// TODO: multiple materials aka. multiple render passes
+		UUID		targetMaterial;
+		// uuid of mesh in mesh pool
+		UUID		targetMesh;
+		// flags for some render options
+		uint64_t	renderOptionFlags;
+
+		RenderableComponent(const RenderableComponent&) = default;
+		RenderableComponent() = default;
+	};
+
+	struct CameraComponent
+	{
+		float m_Far, m_Near, m_AspectRatio, m_Fov;
+
+		CameraComponent() = default;
+		CameraComponent(const CameraComponent& comp) = default;
+
+		CameraComponent(float cameraFar, float cameraNear, float cameraAspect, float cameraFov)
+			:m_Far(cameraFar), m_Near(cameraNear), m_AspectRatio(cameraAspect), m_Fov(cameraFov) 
+		{}
+	};
+
 
 	template<typename ...Args>
 	struct ComponentGroup {};
-	using AllCopiableComponents = ComponentGroup<TransformComponent>;
+	using AllCopiableComponents = ComponentGroup<TransformComponent, RenderableComponent, CameraComponent, CustomScriptCompoent>;
 
 }

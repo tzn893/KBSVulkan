@@ -64,7 +64,7 @@ void kbs::LayerManager::PropagateEvent(const Event& e)
 {
 	for (int i = m_Layers.size() - 1;i >= 0;i--)
 	{
-		// if event has
+		// if event has deal by one layer, the event will stop propagate
 		if (m_Layers[i]->OnEvent(e))
 		{
 			break;

@@ -31,6 +31,11 @@ namespace kbs
 
 	namespace math
 	{
+		inline Angle acos(float angle)
+		{
+			return Angle::FromRadius(glm::acos(angle));
+		}
+
 		inline float cos(Angle angle)
 		{
 			return ::cos(angle.radius);
@@ -51,6 +56,36 @@ namespace kbs
 			return glm::cross(lhs, rhs);
 		}
 
+		inline vec2 normalize(vec2 v)
+		{
+			return glm::normalize(v);
+		}
+
+		inline vec3 normalize(vec3 v)
+		{
+			return glm::normalize(v);
+		}
+
+		inline vec4 normalize(vec4 v)
+		{
+			return glm::normalize(v);
+		}
+
+		inline float length(vec2 v)
+		{
+			return glm::length(v);
+		}
+
+		inline float length(vec3 v)
+		{
+			return glm::length(v);
+		}
+
+		inline float length(vec4 v)
+		{
+			return glm::length(v);
+		}
+
 		inline mat2 out_product(vec2 lhs, vec2 rhs)
 		{
 			return glm::outerProduct(lhs, rhs);
@@ -64,6 +99,21 @@ namespace kbs
 		inline mat4 out_product(vec4 lhs, vec4 rhs)
 		{
 			return glm::outerProduct(lhs, rhs);
+		}
+
+		inline float dot(vec2 lhs, vec2 rhs)
+		{
+			return glm::dot(lhs, rhs);
+		}
+
+		inline float dot(vec3 lhs, vec3 rhs)
+		{
+			return glm::dot(lhs, rhs);
+		}
+
+		inline float dot(vec4 lhs, vec4 rhs)
+		{
+			return glm::dot(lhs, rhs);
 		}
 
 		inline mat2 mul_element_wise(mat2 lhs, mat2 rhs)
@@ -149,6 +199,21 @@ namespace kbs
 		inline mat4 euler2Mat(vec3 euler)
 		{
 			return quat2mat(euler2Quat(euler));
+		}
+
+		inline mat4 position(vec3 pos)
+		{
+			return glm::translate(glm::mat4(1.0f),pos);
+		}
+
+		inline mat4 scale(vec3 s)
+		{
+			return mat4(
+				s.x	,0	,0	,0,
+				0	,s.y,0	,0,
+				0	,0	,s.z,0,
+				0	,0	,0	,1
+			);
 		}
 	}
 }

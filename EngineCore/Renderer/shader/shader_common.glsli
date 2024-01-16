@@ -1,0 +1,17 @@
+#ifndef SHADER_COMMON_GLSLI
+#define SHADER_COMMON_GLSLI
+
+#define perObject set = 0
+#define perMaterial set = 1
+#define perCamera set = 2
+#define perDraw set = 3
+
+struct VertexOutput
+{
+    vec3 normal;
+    vec2 uv;
+    vec3 worldPos;
+    vec3 tangent;
+};
+#endif
+

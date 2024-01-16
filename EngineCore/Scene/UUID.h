@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <unordered_map>
 
 // copied mostly from hazel
 namespace kbs {
@@ -10,6 +11,16 @@ namespace kbs {
 		UUID();
 		UUID(uint64_t uuid);
 		UUID(const UUID&) = default;
+
+		static UUID Create();
+
+		template<typename T>
+		static UUID	GenerateUncollidedID(const std::unordered_map<UUID, T>& map)
+		{
+			UUID id = Create();
+			while (map.count(id)) id = Create();
+			return id;
+		}
 
 		operator uint64_t() const { return m_UUID; }
 	private:

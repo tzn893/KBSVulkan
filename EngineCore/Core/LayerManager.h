@@ -39,8 +39,19 @@ namespace kbs {
 			{
 				PropagateEvent(e);
 			};
-			eventManager->AddListener(wapper);
+			eventManager->AddListener<T>(wapper);
         }
+
+		template<typename ...E>
+		void ListenToEvents(EventManager* eventManger)
+		{
+			(
+				[&]() 
+				{
+					ListenToEvent<E>(eventManger);
+				}()
+				, ...);
+		}
 
 
 	private:

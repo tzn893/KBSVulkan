@@ -1,0 +1,24 @@
+#ifndef OBJECT_GLSLI
+#define OBJECT_GLSLI
+
+struct Object
+{
+	mat4 model;
+	mat4 invTransModel;
+};
+
+layout (perObject, binding = 0) uniform ObjectUBO
+{ 
+	Object object;
+} object;
+
+mat4 KBS_Get_Model()
+{
+	return object.object.model;
+}
+
+mat4 KBS_Get_InvTransModel()
+{
+	return object.object.invTransModel;
+}
+#endif

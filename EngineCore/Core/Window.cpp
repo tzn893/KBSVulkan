@@ -2,7 +2,7 @@
 #include "Core/Application.h"
 
 kbs::Window::Window(uint32_t width, uint32_t height, Application* app, const char* title)
-	:m_App(app)
+	:m_App(app), m_Height(height), m_Width(width)
 {
 	m_Window = gvk::Window::Create(width, height, title).value();
 }

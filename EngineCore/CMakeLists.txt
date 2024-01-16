@@ -7,8 +7,11 @@ else()
 	add_library(kbs KBS.h)
 endif()
 
+
+add_compile_definitions(KBS_ROOT_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}")
+
 target_link_libraries(kbs vkrg spdlog)
-target_include_directories(kbs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(kbs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/vkrg/src)
 
 target_sources(kbs PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Common.h)
 
@@ -20,3 +23,5 @@ add_subdirectory(Core)
 add_subdirectory(Platform)
 add_subdirectory(Math)
 add_subdirectory(Scene)
+add_subdirectory(Renderer)
+add_subdirectory(Asset)

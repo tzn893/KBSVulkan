@@ -20,4 +20,8 @@ namespace kbs {
 	{
 	}
 
+	UUID UUID::Create()
+	{
+		return UUID();
+	}
 }

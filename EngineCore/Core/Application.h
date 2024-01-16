@@ -4,6 +4,7 @@
 #include "Core/Event.h"
 #include "Core/LayerManager.h"
 #include "Core/Window.h"
+#include "Core/Timer.h"
 
 namespace kbs
 {
@@ -45,6 +46,7 @@ namespace kbs
 		ptr<EventManager>	m_EventManager;
 		ptr<LayerManager>	m_LayerManager;
 		ptr<Window>			m_Window;
+		ptr<Timer>			m_Timer;
 
 		int m_WindowWidth;
 		int m_WindowHeight;

@@ -40,6 +40,8 @@ KBS_API kbs::Application::Application(ApplicationCommandLine& commandLine)
 		{
 			KBS_WARN("unknown command line parameter {}", commandLine.commands[i].c_str());
 		}
+
+		m_Timer = std::make_shared<Timer>();
 	}
 }
 
@@ -56,7 +58,11 @@ KBS_API void kbs::Application::OnUpdate()
 KBS_API int kbs::Application::Run()
 {
 	m_EventManager = std::make_shared<kbs::EventManager>();
+	m_LayerManager = std::make_shared<kbs::LayerManager>();
 	m_Window = std::make_shared<kbs::Window>(m_WindowWidth, m_WindowHeight, this, m_Title.c_str());
+
+	m_LayerManager->ListenToEvents<KeyDownEvent, KeyHoldEvent, KeyReleasedEvent, MouseButtonEvent, MouseButtonDownEvent,
+		MouseButtonReleasedEvent, MouseMovedEvent, WindowResizeEvent, WindowCloseEvent>(m_EventManager.get());
 
 	BeforeRun();
 
@@ -64,6 +70,7 @@ KBS_API int kbs::Application::Run()
 	{
 		OnUpdate();
 		m_Window->Update();
+		m_Timer->Tick();
 	}
 
 	return 0;
@@ -72,6 +79,11 @@ KBS_API int kbs::Application::Run()
 KBS_API kbs::LayerManager* kbs::Application::GetLayerManager()
 {
 	return m_LayerManager.get();
+}
+
+kbs::Window* kbs::Application::GetWindow()
+{
+	return m_Window.get();
 }
 
 KBS_API kbs::ApplicationCommandLine::ApplicationCommandLine(int argc, const char** argv)

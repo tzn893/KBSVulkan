@@ -1,7 +1,7 @@
 add_subdirectory(googletest)
 set(GTEST_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googletest/include CACHE INTERNAL "GTEST_INCLUDE") 
 
-set(test_cases ecs)
+set(test_cases shader)
 
 message(STATUS "testing include directory : ${GTEST_INCLUDE}")
 
@@ -17,6 +17,7 @@ foreach(test_case ${test_cases})
     ${test_case}
     gtest
     spdlog
+    kbs
   )
 
 	if (WIN32)

@@ -1,6 +1,7 @@
 #include "Scene/Scene.h"
 #include "Scene/Components.h"
 #include "Scene/UUID.h"
+#include "Scene/Entity.h"
 
 /*
 kbs::opt<kbs::Entity> kbs::Scene::FindEntityByName(std::string_view name)
@@ -101,7 +102,7 @@ namespace kbs {
 
 	Entity Scene::CreateEntity(const std::string& name)
 	{
-		return CreateEntityWithUUID(UUID(), name);
+		return CreateEntityWithUUID(UUID::GenerateUncollidedID(m_EntityMap), name);
 	}
 
 	Entity Scene::CreateEntityWithUUID(UUID uuid, const std::string& name)
@@ -120,6 +121,27 @@ namespace kbs {
 	{
 		m_EntityMap.erase(entity.GetUUID());
 		m_Registry.destroy(entity);
+	}
+
+	Entity Scene::FindEntityByName(std::string_view name)
+	{
+		auto view = m_Registry.view<NameComponent>();
+		for (auto entity : view)
+		{
+			const NameComponent& tc = view.get<NameComponent>(entity);
+			if (tc.name == name)
+				return Entity{ entity, this };
+		}
+		return {};
+	}
+
+	Entity Scene::GetEntityByUUID(UUID uuid)
+	{
+		// TODO(Yan): Maybe should be assert
+		if (m_EntityMap.find(uuid) != m_EntityMap.end())
+			return { m_EntityMap.at(uuid), this };
+
+		return {};
 	}
 }
 
