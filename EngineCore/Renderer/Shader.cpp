@@ -481,6 +481,7 @@ namespace kbs
 							return false;
 						}
 
+						
 						switch (member.traits.numeric.vector.component_count)
 						{
 						case 1:
@@ -526,7 +527,13 @@ namespace kbs
 
 					if (i != structMemberInfos.size() - 1)
 					{
-						switch (structMemberInfos[i].info.type)
+						/*
+							opengl std143 specifies
+							1. If the member is a scalar consuming N basic machine units, the base alignment is N.
+							2. If the member is a two - or four - component vector with components consuming N basic machine units, the base alignment is 2N or 4N, respectively.
+							3. If the member is a three - component vector with components consuming N basic machine units, the base alignment is 4N.
+						*/
+						switch (structMemberInfos[i + 1].info.type)
 						{
 						case VariableType::Int:
 						case VariableType::Float:
@@ -535,7 +542,7 @@ namespace kbs
 							alignedBufferSize = round_up<8>(alignedBufferSize);
 							break;
 						case VariableType::Float3:
-							alignedBufferSize = round_up<12>(alignedBufferSize);
+							alignedBufferSize = round_up<16>(alignedBufferSize);
 							break;
 						case VariableType::Float4:
 							alignedBufferSize = round_up<16>(alignedBufferSize);

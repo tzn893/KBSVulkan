@@ -25,12 +25,11 @@ namespace kbs
 	{
 	public:
 		RenderCamera() = default;
-		RenderCamera(CameraComponent camera, TransformComponent transform);
+		RenderCamera(Entity e);
 		RenderCamera(const RenderCamera& camera) = default;
 		
 		CameraUBO	GetCameraUBO();
 		Transform&	GetCameraTransform();
-		static opt<RenderCamera> CreateRenderCamera(Entity entity);
 
 	private:
 		CameraComponent     m_Camera;

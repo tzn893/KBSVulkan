@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "Asset/AssetManager.h"
 #include "Scene/Entity.h"
+#include "Core/Singleton.h"
 
 namespace kbs
 {
@@ -73,7 +74,7 @@ namespace kbs
         }
 
         // TODO better way initialize AssetManager::ShaderManager
-        AssetManager::GetInstance()->GetShaderManager()->Initialize(m_Context);
+        Singleton::GetInstance<AssetManager>()->GetShaderManager()->Initialize(m_Context);
 
         return true;
     }
@@ -111,7 +112,7 @@ namespace kbs
 
     void Renderer::RenderSceneByCamera(ptr<Scene> scene, RenderCamera& camera, RenderFilter filter, VkCommandBuffer cmd)
     {
-        ptr<AssetManager> assetManager = AssetManager::GetInstance();
+        AssetManager* assetManager = Singleton::GetInstance<AssetManager>();
         m_CameraBuffer->GetBuffer()->Write(&camera.GetCameraUBO(), 0, sizeof(CameraUBO));
 
         struct RenderableObject
@@ -122,7 +123,7 @@ namespace kbs
         };
 
         std::vector<RenderableObject> objects;
-        auto sort_by_distance = [&](const RenderableObject& lhs, const RenderableObject& rhs)
+        auto sort_by_distance = [&](RenderableObject& lhs, RenderableObject& rhs)
         {
             if ((lhs.render.renderOptionFlags & RenderOption_DontCullByDistance) != (rhs.render.renderOptionFlags & RenderOption_DontCullByDistance))
             {
@@ -132,7 +133,7 @@ namespace kbs
             vec3 cameraPos = camera.GetCameraTransform().GetPosition();
             return math::length(cameraPos - lhs.transform.GetPosition()) < math::length(cameraPos - rhs.transform.GetPosition());
         };
-        auto sort_by_mesh = [&](const RenderableObject& lhs, const RenderableObject& rhs)
+        auto sort_by_mesh = [&](RenderableObject& lhs, RenderableObject& rhs)
         {
             ShaderID lhsShaderID = GetMaterialByID(lhs.render.targetMaterial)->GetShader()->GetShaderID();
             ShaderID rhsShaderID = GetMaterialByID(rhs.render.targetMaterial)->GetShader()->GetShaderID();
@@ -167,7 +168,7 @@ namespace kbs
                     {
                         TransformComponent  trans = e.GetComponent<TransformComponent>();
                         IDComponent idcomp = e.GetComponent<IDComponent>();
-                        objects.push_back(RenderableObject{ idcomp.ID, render, Transform(trans) });
+                        objects.push_back(RenderableObject{ idcomp.ID, render, Transform(trans, e) });
                     }
                 }
         );
@@ -186,7 +187,7 @@ namespace kbs
         for (uint32_t i = 0;i < objects.size();i++)
         {
             ObjectUBO objectUbo = objects[i].transform.GetObjectUBO();
-            m_ObjectUBOPool->GetBuffer()->Write(&objectUbo, 0, sizeof(ObjectUBO));
+            m_ObjectUBOPool->GetBuffer()->Write(&objectUbo, sizeof(ObjectUBO) * i, sizeof(ObjectUBO));
 
             ptr<Material> mat = GetMaterialByID(objects[i].render.targetMaterial);
             if (mat->GetShader()->GetShaderID() != bindedShaderID)
@@ -231,7 +232,7 @@ namespace kbs
 
     bool Renderer::InitializeMaterialPipelines()
     {
-        View<ptr<Material>> mats = AssetManager::GetInstance()->GetMaterialManager()->GetMaterials();
+        View<ptr<Material>> mats = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->GetMaterials();
         m_MaterialDescriptorAllocator = m_Context->CreateDescriptorAllocator();
 
         for (auto mat : mats)
@@ -251,7 +252,6 @@ namespace kbs
                 mat->GetShader()->OnPipelineStateCreate(info);
                 info.subpass_index = subPassIdx;
                 info.target_pass = targetPass;
-                info.rasterization_state.cullMode = VK_CULL_MODE_NONE;
 
                 auto optPipeline = m_Context->CreateGraphicsPipeline(info);
                 if (!optPipeline.has_value())
@@ -424,7 +424,7 @@ namespace kbs
 
     ptr<Material> Renderer::GetMaterialByID(MaterialID id)
     {
-        auto mat = AssetManager::GetInstance()->GetMaterialManager()->GetMaterialByID(id);
+        auto mat = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->GetMaterialByID(id);
         KBS_ASSERT(mat.has_value(), "id passed to this function must be a valid id");
 
         return mat.value();
@@ -432,13 +432,13 @@ namespace kbs
 
     ptr<MeshGroup> Renderer::GetMeshGroupByComponent(const RenderableComponent& comp)
     {
-        ptr<MeshPool> pool = AssetManager::GetInstance()->GetMeshPool();
+        ptr<MeshPool> pool = Singleton::GetInstance<AssetManager>()->GetMeshPool();
         return pool->GetMeshGroup(pool->GetMesh(comp.targetMesh)->GetMeshGroupID()).value();
     }
 
     Mesh Renderer::GetMeshByComponent(const RenderableComponent& comp)
     {
-        ptr<MeshPool> pool = AssetManager::GetInstance()->GetMeshPool();
+        ptr<MeshPool> pool = Singleton::GetInstance<AssetManager>()->GetMeshPool();
         return pool->GetMesh(comp.targetMesh).value();
     }
 

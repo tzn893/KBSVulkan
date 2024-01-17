@@ -6,4 +6,9 @@ namespace kbs {
 		: m_EntityHandle(handle), m_Scene(scene)
 	{}
 
+	Scene* Entity::GetScene()
+	{
+		return m_Scene;
+	}
+
 }

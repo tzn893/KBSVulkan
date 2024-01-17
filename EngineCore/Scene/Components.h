@@ -28,6 +28,7 @@ namespace kbs
 
 	struct TransformComponent
 	{
+		UUID parent;
 		vec3 position;
 		quat rotation;
 		vec3 scale;

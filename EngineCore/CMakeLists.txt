@@ -7,6 +7,7 @@ else()
 	add_library(kbs KBS.h)
 endif()
 
+target_link_libraries(kbs tinygltf ktx)
 
 add_compile_definitions(KBS_ROOT_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}")
 

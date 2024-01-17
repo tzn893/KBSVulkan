@@ -17,7 +17,6 @@ protected:
 	friend class RotatingCubeMainPass;
 };
 
-
 class RotatingCubeMainPass : public vkrg::RenderPassInterface
 {
 public:
@@ -96,6 +95,7 @@ namespace kbs
 
 ptr<Scene> scene;
 ptr<RotatingCubeRenderer> renderer;
+Entity					  mainCamera;
 
 
 namespace kbs
@@ -181,7 +181,7 @@ void RotatingCubeApplication::BeforeRun()
 	info.instance.AddLayer(GVK_LAYER_DEBUG);
 	info.instance.AddLayer(GVK_LAYER_FPS_MONITOR);
 
-	AssetManager::GetInstance()->GetShaderManager()->AddSearchingDirectory(ROTATING_CUBE_ROOT_DIRECTORY);
+	Singleton::GetInstance<AssetManager>()->GetShaderManager()->AddSearchingDirectory(ROTATING_CUBE_ROOT_DIRECTORY);
 	
 	renderer->Initialize(m_Window, info);
 	
@@ -189,24 +189,54 @@ void RotatingCubeApplication::BeforeRun()
 	ptr<RenderBuffer> cubeMeshBuffer = api.CreateBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(cube), GVK_HOST_WRITE_SEQUENTIAL);
 	cubeMeshBuffer->GetBuffer()->Write(cube, 0, sizeof(cube));
 
-	MeshGroupID groupId = AssetManager::GetInstance()->GetMeshPool()->CreateMeshGroup(cubeMeshBuffer, _countof(cube));
-	MeshID meshId = AssetManager::GetInstance()->GetMeshPool()->CreateMeshFromGroup(groupId, 0, _countof(cube), 0, 0);
+	MeshGroupID groupId = Singleton::GetInstance<AssetManager>()->GetMeshPool()->CreateMeshGroup(cubeMeshBuffer, _countof(cube));
+	MeshID meshId = Singleton::GetInstance<AssetManager>()->GetMeshPool()->CreateMeshFromGroup(groupId, 0, _countof(cube), 0, 0);
 
 	scene = std::make_shared<Scene>();
-	Entity entity = scene->CreateEntity("cube0");
-	
-	RenderableComponent render{};
-	render.targetMesh = meshId;
-	ptr<GraphicsShader> shader = std::dynamic_pointer_cast<GraphicsShader>(AssetManager::GetInstance()->GetShaderManager()->Load("shade.glsl").value());
-	
-	MaterialID materialId = AssetManager::GetInstance()->GetMaterialManager()->CreateMaterial(shader, api, "m1");
-	render.targetMaterial = materialId;
+	// add cube to scene
+	{
+		Entity entity = scene->CreateEntity("cube0");
 
-	entity.AddComponent<TransformComponent>(kbs::vec3(0, 0, 5),kbs::math::axisAngle(rotateAxis, angle), kbs::vec3(1, 1, 1));
-	entity.AddComponent<RenderableComponent>(render);
+		RenderableComponent render{};
+		render.targetMesh = meshId;
+		ptr<GraphicsShader> shader = std::dynamic_pointer_cast<GraphicsShader>(Singleton::GetInstance<AssetManager>()->GetShaderManager()->Load("shade.glsl").value());
 
-	cubeEntity = entity;
-	cubeMaterial = materialId;
+		MaterialID materialId = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->CreateMaterial(shader, api, "m1");
+		render.targetMaterial = materialId;
+
+		TransformComponent comp(kbs::vec3(0, 0, 5), kbs::math::axisAngle(rotateAxis, angle), kbs::vec3(1, 1, 1));
+		comp.parent = scene->GetRootID();
+
+		entity.AddComponent<TransformComponent>(comp);
+		entity.AddComponent<RenderableComponent>(render);
+
+		cubeEntity = entity;
+		cubeMaterial = materialId;
+
+		Entity entity2 = scene->CreateEntity("cube2");
+		entity2.AddComponent<RenderableComponent>(render);
+
+
+		comp.position = kbs::vec3(1.1, -1.1, 1.1);
+		comp.scale = kbs::vec3(0.1, 0.1, 0.1);
+		comp.parent = entity.GetUUID();
+		entity2.AddComponent<TransformComponent>(comp);
+	}
+
+	// add main camera to scene
+	{
+		CameraComponent camera(1000, 0.1, 1, kbs::pi / 2);
+		TransformComponent trans(kbs::vec3(), kbs::quat(), kbs::vec3(1, 1, 1));
+		trans.parent = scene->GetRootID();
+
+		mainCamera = scene->CreateEntity("main camera");
+		mainCamera.AddComponent<CameraComponent>(camera);
+		mainCamera.AddComponent<TransformComponent>(trans);
+
+		Transform cameraTrans(trans, mainCamera);
+		cameraTrans.SetPosition(kbs::vec3(0, 0, 0));
+		mainCamera.GetComponent<TransformComponent>() = cameraTrans.GetComponent();
+	}
 }
 
 vkrg::RenderPassHandle RotatingCubeRenderer::GetMaterialTargetRenderPass(RenderPassFlags flag)
@@ -218,9 +248,11 @@ void RotatingCubeApplication::OnUpdate()
 {
 	TransformComponent& comp = cubeEntity.GetComponent<TransformComponent>();
 	angle = m_Timer->TotalTime();
-	comp.rotation = kbs::math::axisAngle(rotateAxis, angle);
-	ptr<Material> mat = AssetManager::GetInstance()->GetMaterialManager()->GetMaterialByID(cubeMaterial).value();
-	mat->SetFloat("time", math::sin(Angle::FromDegree(m_Timer->TotalTime() * 90.f)) * 0.5 + 0.5);
+	comp.rotation = kbs::math::axisAngle(rotateAxis, Angle::FromDegree(angle * 100.f));
+	ptr<Material> mat = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->GetMaterialByID(cubeMaterial).value();
+	
+	mat->SetFloat("time", kbs::math::sin(Angle::FromDegree(m_Timer->TotalTime() * 90.f)) * 0.5 + 0.5);
+	mat->SetVec3("baseColor", kbs::vec3(0.3, 0., 0.));
 
 	renderer->RenderScene(scene);
 }
@@ -273,9 +305,11 @@ bool RotatingCubeRenderer::InitRenderGraph(ptr<kbs::Window> window, ptr<vkrg::Re
 
 void RotatingCubeMainPass::OnRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd)
 {
-	CameraComponent camera(1000, 0.1, 1, kbs::pi / 2);
-	TransformComponent trans(kbs::vec3(), kbs::quat(), kbs::vec3(1, 1, 1));
-	RenderCamera renderCamera(camera, trans);
+	
+	RenderCamera renderCamera(mainCamera);
+
+	kbs::vec3 pos = renderCamera.GetCameraTransform().GetLocalPosition();
+	KBS_LOG("position : ({},{},{})", pos.x, pos.y, pos.z);
 
 	RenderFilter filter;
 	filter.flags = RenderPass_Opaque;

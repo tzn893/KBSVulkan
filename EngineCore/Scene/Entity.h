@@ -79,6 +79,9 @@ namespace kbs
 		{
 			return !(*this == other);
 		}
+
+		Scene* GetScene();
+
 	private:
 		entt::entity m_EntityHandle{ entt::null };
 		Scene* m_Scene = nullptr;

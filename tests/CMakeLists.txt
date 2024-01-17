@@ -1,7 +1,7 @@
 add_subdirectory(googletest)
 set(GTEST_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googletest/include CACHE INTERNAL "GTEST_INCLUDE") 
 
-set(test_cases shader)
+set(test_cases shader hasher)
 
 message(STATUS "testing include directory : ${GTEST_INCLUDE}")
 

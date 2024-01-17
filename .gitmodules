@@ -7,3 +7,9 @@
 [submodule "vkrg"]
 	path = vkrg
 	url = https://gitee.com/tzn123456/vkrg.git
+[submodule "tinygltf"]
+	path = tinygltf
+	url = https://github.com/syoyo/tinygltf.git
+[submodule "KTX-Software"]
+	path = KTX-Software
+	url = https://github.com/KhronosGroup/KTX-Software.git

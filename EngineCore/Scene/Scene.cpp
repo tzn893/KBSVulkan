@@ -32,6 +32,13 @@ namespace kbs {
 
 	Scene::Scene()
 	{
+		Entity rootEntity =  { m_Registry.create(), this };
+		m_Root = UUID::GenerateUncollidedID(m_EntityMap);
+		rootEntity.AddComponent<IDComponent>(m_Root);
+
+		TransformComponent comp(vec3(), quat(), vec3(1., 1., 1.));
+		comp.parent = m_Root;
+		rootEntity.AddComponent<TransformComponent>(comp);
 	}
 
 	Scene::~Scene()
@@ -142,6 +149,10 @@ namespace kbs {
 			return { m_EntityMap.at(uuid), this };
 
 		return {};
+	}
+	UUID Scene::GetRootID()
+	{
+		return m_Root;
 	}
 }
 

@@ -4,8 +4,8 @@
 
 namespace kbs
 {
-	RenderCamera::RenderCamera(CameraComponent camera, TransformComponent transform)
-		:m_Camera(camera), m_Transform(transform)
+	RenderCamera::RenderCamera(Entity e):
+		m_Camera(e.GetComponent<CameraComponent>()),m_Transform(e.GetComponent<TransformComponent>(), e)
 	{}
 
 	CameraUBO kbs::RenderCamera::GetCameraUBO()
@@ -31,15 +31,6 @@ namespace kbs
 		return m_Transform;
 	}
 
-    opt<RenderCamera> kbs::RenderCamera::CreateRenderCamera(Entity entity)
-    {
-		if (auto camera = entity.TryToGetComponent<CameraComponent>(); camera.has_value())
-		{
-			TransformComponent trans = entity.GetComponent<TransformComponent>();
-			return RenderCamera(camera.value(), trans);
-		}
-        return std::nullopt;
-    }
 }
 
 

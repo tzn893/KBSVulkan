@@ -26,6 +26,8 @@ namespace kbs
 		Entity FindEntityByName(std::string_view name);
 		Entity GetEntityByUUID(UUID uuid);
 
+		UUID   GetRootID();
+
 		template<typename... Components>
 		void IterateAllEntitiesWith(std::function<void(Entity e)> visiter)
 		{
@@ -38,6 +40,7 @@ namespace kbs
 	private:
 		entt::registry	m_Registry;
 		std::unordered_map<UUID, entt::entity> m_EntityMap;
+		UUID m_Root;
 
 		friend class Entity;
 		friend class SceneSerializer;
