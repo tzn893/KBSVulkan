@@ -263,6 +263,7 @@ kbs::TextureID vkglTF::Texture::uploadTexture(kbs::RenderAPI& api)
 	api.UploadImage(image, uploadCopyInfo);
 	
 	GvkSamplerCreateInfo samplerInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR);
+	samplerInfo.maxLod = image->Info().mipLevels;
 	VkSampler sampler = api.CreateSampler(samplerInfo).value();
 	VkImageView mainView = api.CreateImageMainView(image);
 	

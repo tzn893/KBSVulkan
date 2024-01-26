@@ -56,7 +56,7 @@ namespace kbs
 
     opt<VkSampler> RenderAPI::CreateSampler(GvkSamplerCreateInfo info)
     {
-        return m_Ctx->CreateSampler(info);
+        return Singleton::GetInstance<GlobalSamplerPool>()->CreateSampler(m_Ctx, info);
     }
 
     VkImageView RenderAPI::CreateImageMainView(ptr<gvk::Image> image)
