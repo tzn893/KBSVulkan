@@ -72,6 +72,10 @@ namespace kbs
 		opt<BufferInfo>	  GetBuffer(const std::string& name);
 		opt<TextureInfo>  GetTexture(const std::string& name);
 
+		void			  IterateVariables(std::function<bool(const std::string&, VariableInfo&)>);
+		void			  IterateTextures(std::function<bool(const std::string&, TextureInfo&)>);
+		void			  IterateBuffers(std::function<bool(const std::string&, BufferInfo&)>);
+
 	private:
 		std::unordered_map<std::string, VariableInfo> m_VariableInfos;
 		std::unordered_map<std::string, BufferInfo>   m_BufferInfos;
@@ -88,6 +92,9 @@ namespace kbs
 	public:
 		Shader(ShaderType type, std::string shaderPath, ShaderManager* manager, ShaderID id);
 		virtual ~Shader() {}
+
+		bool		IsGraphicsShader();
+		bool		IsComputeShader();
 
 		ShaderType  GetShaderType();
 		std::string GetShaderPath();
@@ -193,7 +200,6 @@ namespace kbs
 	public:
 		ShaderManager();
 
-		void			 AddSearchingDirectory(const std::string& directory);
 		void			 Initialize(ptr<gvk::Context> ctx);
 
 		opt<ptr<Shader>> Load(const std::string& filePath);
@@ -208,7 +214,6 @@ namespace kbs
 
 		std::unordered_map<std::string, ShaderID> m_ShaderPathTable;
 		std::unordered_map<ShaderID, ptr<Shader>> m_Shaders;
-		std::vector<std::string> m_SearchingDirectories;
 		ptr<gvk::Shader>		 m_StandardVertexShader;
 		ptr<gvk::Context>		 m_Context;
 

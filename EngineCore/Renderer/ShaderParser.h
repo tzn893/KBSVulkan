@@ -3,6 +3,7 @@
 #include "gvk.h"
 #include "Platform/Platform.h"
 #include "Renderer/Flags.h"
+#include "Math/math.h"
 
 namespace kbs
 {

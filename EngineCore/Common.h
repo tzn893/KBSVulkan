@@ -7,6 +7,7 @@
 #include <optional>
 #include <tuple>
 #include <string>
+#include <algorithm>
 #include <functional>
 #include "Core/Log.h"
 
@@ -45,6 +46,18 @@ namespace kbs
 		return res;
 	}
 
+	inline std::string lower_string(const std::string& _str)
+	{
+		std::string str = _str;
+		std::transform(str.begin(), str.end(), str.begin(), [](char c) {return std::tolower(c); });
+		return str;
+	}
+
+	inline bool string_contains(const std::string& src, const std::string& subStr)
+	{
+		return src.find(subStr) != std::string::npos;
+	}
+	
 	inline std::string string_strip(const std::string& str)
 	{
 		int32_t s = 0;

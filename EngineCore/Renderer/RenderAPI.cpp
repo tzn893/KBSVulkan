@@ -44,6 +44,24 @@ namespace kbs
         VkSampler sampler = Singleton::GetInstance<GlobalSamplerPool>()->CreateSampler(m_Ctx, samplerInfo);
 
         auto image = m_Ctx->CreateImage(imageInfo);
+        auto view = CreateImageMainView(image.value());
+
+        return std::make_shared<Texture>(image.value(), sampler, view);
+    }
+
+    opt<ptr<gvk::Image>> RenderAPI::CreateImage(GvkImageCreateInfo imageInfo)
+    {
+        return m_Ctx->CreateImage(imageInfo);
+    }
+
+    opt<VkSampler> RenderAPI::CreateSampler(GvkSamplerCreateInfo info)
+    {
+        return m_Ctx->CreateSampler(info);
+    }
+
+    VkImageView RenderAPI::CreateImageMainView(ptr<gvk::Image> image)
+    {
+        GvkImageCreateInfo imageInfo = image->Info();
         VkImageViewType viewType;
         if (imageInfo.extent.depth > 1)
         {
@@ -71,19 +89,8 @@ namespace kbs
                 viewType = VK_IMAGE_VIEW_TYPE_1D;
             }
         }
-        auto view = image.value()->CreateView(gvk::GetAllAspects(imageInfo.format), 0, imageInfo.mipLevels, 0, imageInfo.arrayLayers, viewType);
-        
-        return std::make_shared<Texture>(image.value(), sampler, view.value());
-    }
-
-    opt<ptr<gvk::Image>> RenderAPI::CreateImage(GvkImageCreateInfo imageInfo)
-    {
-        return m_Ctx->CreateImage(imageInfo);
-    }
-
-    opt<VkSampler> RenderAPI::CreateSampler(GvkSamplerCreateInfo info)
-    {
-        return m_Ctx->CreateSampler(info);
+        auto view = image->CreateView(gvk::GetAllAspects(imageInfo.format), 0, imageInfo.mipLevels, 0, imageInfo.arrayLayers, viewType);
+        return view.value();
     }
 
     static void SetImageLayout(
@@ -212,13 +219,32 @@ namespace kbs
     }
 
 
+    void RenderAPI::UploadBuffer(ptr<RenderBuffer> buffer, void* data, uint32_t size)
+    {
+        KBS_ASSERT(buffer->GetBuffer()->GetSize() == size, "the data's size uploaded to buffer must match the size of buffer");
+        
+        ptr<gvk::Buffer> stagingBuffer = m_Ctx->CreateBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, size, GVK_HOST_WRITE_SEQUENTIAL).value();
+        stagingBuffer->Write(data, 0, size);
+        
+        ptr<gvk::CommandQueue> queue = m_Ctx->PresentQueue();
+        queue->SubmitTemporalCommand(
+            [&](VkCommandBuffer cmd)
+            {
+                VkBufferCopy copy{};
+                copy.srcOffset = 0;
+                copy.size = size;
+                copy.dstOffset = 0;
+                vkCmdCopyBuffer(cmd, stagingBuffer->GetBuffer(), buffer->GetBuffer()->GetBuffer(), 1, &copy);
+            }, 
+            gvk::SemaphoreInfo::None(), NULL, true);
+        stagingBuffer = nullptr;
+    }
+
     void RenderAPI::UploadImage(ptr<gvk::Image> image, TextureCopyInfo textureInfo)
     {
         GvkImageCreateInfo info = image->Info();
-        KBS_ASSERT(textureInfo.generateMipmap && textureInfo.copyRegions.size() == 1, "only one region is allowed if mipmap is generated automatically");
-        KBS_ASSERT(!textureInfo.generateMipmap && info.mipLevels == textureInfo.copyRegions.size(), "all mipmap regions must be copied");
+        KBS_ASSERT((textureInfo.generateMipmap && textureInfo.copyRegions.size() == 1) || (!textureInfo.generateMipmap && info.mipLevels == textureInfo.copyRegions.size()), "only one region is allowed if mipmap is generated automatically");
         KBS_ASSERT(kbs_cover_flags(info.usage, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT), "image must be copiable");
-
 
         ptr<gvk::CommandQueue> queue = m_Ctx->PresentQueue();
         ptr<gvk::Buffer> stagingBuffer = m_Ctx->CreateBuffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, textureInfo.dataSize, GVK_HOST_WRITE_SEQUENTIAL).value();

@@ -167,7 +167,7 @@ namespace kbs
             break;
         case MeshGroupType::Indices_I16:
         case MeshGroupType::Indices_I32:
-            vkCmdDrawIndexed(cmd, m_IndicesCount, instanceCount, m_IndicesStart, m_VerticesStart, 0);
+            vkCmdDrawIndexed(cmd, m_IndicesCount, instanceCount, m_IndicesStart, 0, 0);
             break;
         }
     }

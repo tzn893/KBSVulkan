@@ -1,9 +1,8 @@
 #include "Shader.h"
 #include "Core/Log.h"
-#include <filesystem>
 #include <fstream>
+#include "Core/FileSystem.h"
 
-namespace fs = std::filesystem;
 
 namespace kbs
 {
@@ -12,12 +11,9 @@ namespace kbs
 		
 	}
 
-	void ShaderManager::AddSearchingDirectory(const std::string& directory)
+	static FileSystem<ShaderManager>* GetShaderFileManager()
 	{
-		if (std::find(m_SearchingDirectories.begin(), m_SearchingDirectories.end() ,directory) == m_SearchingDirectories.end())
-		{
-			m_SearchingDirectories.push_back(directory);
-		}
+		return Singleton::GetInstance<FileSystem<ShaderManager>>();
 	}
 
 	void ShaderManager::Initialize(ptr<gvk::Context> ctx)
@@ -28,7 +24,8 @@ namespace kbs
 			shaderDirectorys, 1, shaderDirectorys, 1, nullptr);
 		KBS_ASSERT(standardVertex.has_value(), "standard vertex shader must be compiled");
 		m_StandardVertexShader = standardVertex.value();
-		m_SearchingDirectories.push_back(KBS_ROOT_DIRECTORY"/Renderer/shader");
+
+		GetShaderFileManager()->AddSearchPath(KBS_ROOT_DIRECTORY"/Renderer/shader");
 
 		m_Context = ctx;
 	}
@@ -49,9 +46,9 @@ namespace kbs
 		}
 		std::string filePath = absolutePath;
 		
-			
+		auto workingDirectories = GetShaderFileManager()->GetSearchPathes();
 		std::vector<const char*> workingDirectoryCStr;
-		for (auto& s : m_SearchingDirectories) workingDirectoryCStr.push_back(s.c_str());
+		for (auto& s : workingDirectories) { workingDirectoryCStr.push_back(s.c_str()); }
 		
 		std::string msg;
 		ptr<Shader> loadedShader;
@@ -168,51 +165,31 @@ namespace kbs
 	bool ShaderManager::Exists(const std::string& filePath)
 	{
 		std::string validAbsolutePath;
-		fs::path inputFilePath = filePath;
-		fs::path absoluteInputFilePath = fs::absolute(inputFilePath);
+		if (auto var = GetShaderFileManager()->FindAbsolutePath(filePath);var.has_value())
+		{
+			validAbsolutePath = var.value();
+		}
+		else
+		{
+			return false;
+		}
 
-		if (m_ShaderPathTable.count(absoluteInputFilePath.string()))
-		{
-			return true;
-		}
-		else if (inputFilePath.is_relative())
-		{
-			for (auto s : m_SearchingDirectories)
-			{
-				fs::path searchPath = s / inputFilePath;
-				return m_ShaderPathTable.count(searchPath.string());
-			}
-		}
-		return false;
+		return m_ShaderPathTable.count(validAbsolutePath);
 	}
 
 	opt<ShaderInfo> ShaderManager::LoadAndPreParse(const std::string& filePath, std::string& fileabsolutePath)
 	{
 		std::string validAbsolutePath;
-		fs::path inputFilePath = filePath;
-		if (fs::exists(inputFilePath))
+		
+		if (auto var = GetShaderFileManager()->FindAbsolutePath(filePath); var.has_value())
 		{
-			if (inputFilePath.is_absolute())
-			{
-				validAbsolutePath = inputFilePath.string();
-			}
-			else
-			{
-				validAbsolutePath = fs::absolute(inputFilePath).string();
-			}
+			validAbsolutePath = var.value();
 		}
-		else if(inputFilePath.is_relative())
+		else
 		{
-			for (auto s : m_SearchingDirectories)
-			{
-				fs::path searchPath = s / inputFilePath;
-				if (fs::exists(searchPath))
-				{
-					validAbsolutePath = searchPath.string();
-					break;
-				}
-			}
+			return std::nullopt;
 		}
+
 		if (validAbsolutePath.empty())
 		{
 			KBS_WARN("file {} is invalid", filePath.c_str());
@@ -277,6 +254,16 @@ namespace kbs
 
 	kbs::Shader::Shader(ShaderType type, std::string shaderPath, ShaderManager* manager, ShaderID id)
 		:m_ShaderType(type), m_ShaderPath(shaderPath),m_Manager(manager),m_Id(id) {}
+
+	bool Shader::IsGraphicsShader()
+	{
+		return m_ShaderType == ShaderType::Surface || m_ShaderType == ShaderType::CustomVertex || m_ShaderType == ShaderType::MeshShader;
+	}
+
+	bool Shader::IsComputeShader()
+	{
+		return m_ShaderType == ShaderType::Compute;
+	}
 
 	void SurfaceShader::OnPipelineStateCreate(GvkGraphicsPipelineCreateInfo& info)
 	{
@@ -673,6 +660,7 @@ namespace kbs
 		}
 		return m_BufferInfos[name];
 	}
+
 	opt<ShaderReflection::TextureInfo> ShaderReflection::GetTexture(const std::string& name)
 	{
 		if (!m_TextureInfos.count(name))
@@ -680,5 +668,37 @@ namespace kbs
 			return std::nullopt;
 		}
 		return m_TextureInfos[name];
+	}
+	
+	void ShaderReflection::IterateVariables(std::function<bool(const std::string&, VariableInfo&)> op)
+	{
+		for (auto& pair : m_VariableInfos)
+		{
+			if (!op(pair.first, pair.second))
+			{
+				break;
+			}
+		}
+	}
+
+	void ShaderReflection::IterateTextures(std::function<bool(const std::string&, TextureInfo&)> op)
+	{
+		for (auto& pair : m_TextureInfos)
+		{
+			if (!op(pair.first, pair.second))
+			{
+				break;
+			}
+		}
+	}
+	void ShaderReflection::IterateBuffers(std::function<bool(const std::string&, BufferInfo&)> op)
+	{
+		for (auto& pair : m_BufferInfos)
+		{
+			if (!op(pair.first, pair.second))
+			{
+				break;
+			}
+		}
 	}
 }

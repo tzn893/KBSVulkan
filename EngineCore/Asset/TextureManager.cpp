@@ -18,13 +18,15 @@ namespace kbs
 
     opt<TextureID> TextureManager::Attach(ptr<gvk::Image> image, VkSampler sampler, VkImageView view, const std::string& path)
     {
-        if (m_TextureByPath.count(path))
+        std::string fullPath = fs::absolute(fs::path(path)).string();
+
+        if (m_TextureByPath.count(fullPath))
         {
             return std::nullopt;
         }
         TextureID id = UUID::GenerateUncollidedID(m_Textures);
-        m_Textures[id] = std::make_shared<ManagedTexture>(image, sampler, view, path, id);
-        m_TextureByPath[path] = id;
+        m_Textures[id] = std::make_shared<ManagedTexture>(image, sampler, view, fullPath, id);
+        m_TextureByPath[fullPath] = id;
 
         return id;
     }

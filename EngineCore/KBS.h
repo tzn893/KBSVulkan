@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/FileSystem.h"
 #include "Core/Application.h"
 #include "Math/math.h"
 #include "Platform/Platform.h"

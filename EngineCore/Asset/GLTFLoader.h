@@ -32,6 +32,8 @@
 #include "tiny_gltf.h"
 #include "Renderer/RenderAPI.h"
 
+#include "Renderer/ShaderParser.h"
+
 
 namespace vkglTF
 {
@@ -59,10 +61,32 @@ namespace vkglTF
 	*/
 	struct Texture {
 		
-		kbs::UUID	  image;
+		kbs::TextureCopyInfo uploadCopyInfo;
+		GvkImageCreateInfo   imageCreateInfo;
+		std::string			 path;
+
+		struct DataDescriptor
+		{
+			bool isKtx;
+			union
+			{
+				ktxTexture* ktxTexture;
+				void* rawTexture;
+			} data;
+
+			~DataDescriptor();
+			DataDescriptor();
+		};
+		kbs::ptr<DataDescriptor> desc;
+
 
 		void destroy();
-		void fromglTfImage(tinygltf::Image& gltfimage, std::string path, kbs::RenderAPI& api);
+		void fromglTfImage(tinygltf::Image& gltfimage, std::string path);
+		kbs::TextureID uploadTexture(kbs::RenderAPI& api);
+
+		Texture() = default;
+		Texture(const Texture&);
+		~Texture();
 	};
 
 	/*
@@ -249,12 +273,12 @@ namespace vkglTF
 		vkglTF::Texture* getTexture(uint32_t index);
 		vkglTF::Texture emptyTexture;
 
-		gvk::ptr<gvk::Pipeline> targetPipeline;
 		BoundingBox boundBox;
 
 	public:
-
-		kbs::MeshGroupID   mesh;
+		uint32_t			 vertexCount;
+		std::vector<kbs::ShaderStandardVertex> assambledVertexBuffer;
+		std::vector<uint32_t> indexBuffer;
 
 		std::vector<Node*> nodes;
 		std::vector<Node*> linearNodes;
@@ -277,14 +301,14 @@ namespace vkglTF
 		bool buffersBound = false;
 		std::string path;
 
-		Model() {};
+		Model() { vertexCount = 0; };
 		~Model();
 		void loadNode(vkglTF::Node* parent, const tinygltf::Node& node, uint32_t nodeIndex, const tinygltf::Model& model, std::vector<uint32_t>& indexBuffer, std::vector<Vertex>& vertexBuffer, float globalscale);
 		void loadSkins(tinygltf::Model& gltfModel);
-		void loadImages(tinygltf::Model& gltfModel, kbs::RenderAPI& api);
+		void loadImages(tinygltf::Model& gltfModel);
 		void loadMaterials(tinygltf::Model& gltfModel);
 		void loadAnimations(tinygltf::Model& gltfModel);
-		void loadFromFile(std::string filename , SpvReflectInterfaceVariable** variables, uint32_t variableCount, kbs::RenderAPI& api, uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None, float scale = 1.0f);
+		void loadFromFile(std::string filename , uint32_t fileLoadingFlags = vkglTF::FileLoadingFlags::None, float scale = 1.0f);
 		void getNodeDimensions(Node* node, glm::vec3& min, glm::vec3& max);
 		void getSceneDimensions();
 		void updateAnimation(uint32_t index, float time);

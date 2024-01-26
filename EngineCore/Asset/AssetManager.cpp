@@ -8,6 +8,7 @@ namespace kbs
 		m_MaterialManager = std::make_shared<MaterialManager>();
 		m_ShaderManager = std::make_shared<ShaderManager>();
 		m_TextureManager = std::make_shared<TextureManager>();
+		m_ModelManager = std::make_shared<ModelManager>();
 	}
 
 	ptr<MeshPool> AssetManager::GetMeshPool()
@@ -27,5 +28,10 @@ namespace kbs
 	ptr<TextureManager> AssetManager::GetTextureManager()
 	{
 		return m_TextureManager;
+	}
+
+	ptr<ModelManager> AssetManager::GetModelManager()
+	{
+		return m_ModelManager;
 	}
 }

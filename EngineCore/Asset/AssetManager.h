@@ -4,6 +4,7 @@
 #include "Renderer/Shader.h"
 #include "Asset/TextureManager.h"
 #include "Core/Singleton.h"
+#include "Asset/Model.h"
 
 
 namespace kbs
@@ -19,10 +20,13 @@ namespace kbs
 		ptr<ShaderManager>			GetShaderManager();
 		ptr<TextureManager>			GetTextureManager();
 
+		ptr<ModelManager>			GetModelManager();
+
 	private:
 		ptr<MeshPool>			m_MeshPool;
 		ptr<MaterialManager>	m_MaterialManager;
 		ptr<ShaderManager>		m_ShaderManager;
 		ptr<TextureManager>		m_TextureManager;
+		ptr<ModelManager>		m_ModelManager;
 	};
 }

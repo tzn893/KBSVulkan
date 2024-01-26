@@ -11,8 +11,14 @@ namespace kbs {
 	static std::uniform_int_distribution<uint64_t> s_UniformDistribution;
 
 	UUID::UUID()
-		: m_UUID(s_UniformDistribution(s_Engine))
+		: m_UUID()
 	{
+		uint64_t id = s_UniformDistribution(s_Engine);
+		if(id == 0xffffffffffffffff)
+		{
+			id = s_UniformDistribution(s_Engine);
+		}
+		this->m_UUID = id;
 	}
 
 	UUID::UUID(uint64_t uuid)
@@ -23,5 +29,9 @@ namespace kbs {
 	UUID UUID::Create()
 	{
 		return UUID();
+	}
+	UUID UUID::Invalid()
+	{
+		return UUID{ 0xffffffffffffffff };
 	}
 }

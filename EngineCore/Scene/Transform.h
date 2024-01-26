@@ -16,6 +16,7 @@ namespace kbs
 	public:
 		Transform() = default;
 		Transform(TransformComponent trans, Entity entity);
+		Transform(Entity entity):m_Trans(entity.GetComponent<TransformComponent>()),m_Entity(entity) {}
 		Transform(const Transform&) = default;
 
 		vec3		GetPosition();

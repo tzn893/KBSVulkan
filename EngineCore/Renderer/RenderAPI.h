@@ -26,9 +26,10 @@ namespace kbs
 		ptr<Texture>				CreateTexture(GvkImageCreateInfo imageInfo, GvkSamplerCreateInfo samplerInfo = GvkSamplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR));
 		opt<ptr<gvk::Image>>		CreateImage(GvkImageCreateInfo imageInfo);
 		opt<VkSampler>				CreateSampler(GvkSamplerCreateInfo info);
+		VkImageView					CreateImageMainView(ptr<gvk::Image> image);
 
 
-		// void						UploadBuffer();
+		void						UploadBuffer(ptr<RenderBuffer> buffer, void* data, uint32_t size);
 		void						UploadImage(ptr<gvk::Image> image, TextureCopyInfo textureInfo);
 
 	private:

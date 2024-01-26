@@ -26,7 +26,7 @@ struct Frustrum
 
 mat4 KBS_Get_VP()
 {
-    return camera.camera.view * camera.camera.projection;
+    return camera.camera.projection * camera.camera.view;
 }
 
 mat4 KBS_Get_View()
