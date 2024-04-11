@@ -1,0 +1,68 @@
+#ifndef FRUSTRUM_GLSL
+#define FRUSTRUM_GLSL
+
+#ifndef CAMERA_GLSLI
+struct Camera
+{
+    mat4 invProjection;
+    mat4 projection;
+    mat4 invView;
+    mat4 view;
+    vec3 cameraPosition;
+};
+#endif
+
+struct Frustrum
+{
+    // (x, y, z): normal of one frustrum plane
+    // w: distance frustrum plane from original
+    vec4 plane[6];
+};
+
+Frustrum KBSComputeCameraFrustrum(float u_tile, float u_tile_1, float v_tile, float v_tile_1, float d, float d_1, Camera camera)
+{
+    mat4  m = camera.projection * camera.view;
+
+    vec4 right  = - vec4(u_tile_1 *   m[0][3] - m[0][0], u_tile_1 *   m[1][3] - m[1][0], u_tile_1 *   m[2][3] - m[2][0], u_tile_1 *   m[3][3] - m[3][0]);
+    vec4 up     = - vec4(v_tile_1 *   m[0][3] - m[0][1], v_tile_1 *   m[1][3] - m[1][1], v_tile_1 *   m[2][3] - m[2][1], v_tile_1 *   m[3][3] - m[3][1]);
+    vec4 front  = - vec4(d_1   *   m[0][3] - m[0][2], d_1  *  m[1][3] - m[1][2], d_1  *  m[2][3] - m[2][2], d_1  *   m[3][3] - m[3][2]);
+    
+    vec4 left   = - vec4( m[0][0] - u_tile * m[0][3], m[1][0] - u_tile * m[1][3], m[2][0] - u_tile * m[2][3], m[3][0] - u_tile * m[3][3]);
+    vec4 down   = - vec4( m[0][1] - v_tile * m[0][3], m[1][1] - v_tile * m[1][3], m[2][1] - v_tile * m[2][3], m[3][1] - v_tile * m[3][3]);
+    vec4 back   = - vec4( m[0][2] - d * m[0][3] , m[1][2] - d * m[1][3], m[2][2] -  d * m[2][3] , m[3][2] - d * m[3][3]);
+    
+    Frustrum frustrum;
+    frustrum.plane[0] = right;
+    frustrum.plane[1] = left;
+    frustrum.plane[2] = up;
+    frustrum.plane[3] = down;
+    frustrum.plane[4] = front;
+    frustrum.plane[5] = back;
+
+    return frustrum;
+}
+
+int KBSFrustrumSphereIntersection(Frustrum frustrum, vec4 sphere)
+{
+    vec3  sphereOrigin = sphere.xyz;
+    float sphereRadius = sphere.w;
+
+    for(int i = 0; i < 6; i++)
+    {
+        vec4 plane = frustrum.plane[i];
+        
+        vec3    planeNormal   = plane.xyz;
+        float   planeDistance = plane.w;
+
+        float sphereDistance = dot(planeNormal, sphereOrigin);
+
+        if(sphereDistance + planeDistance > sphereRadius)
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+#endif

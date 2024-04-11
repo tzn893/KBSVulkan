@@ -18,7 +18,19 @@ namespace kbs
 		ComputeBegin,
 		ComputeEnd,
 		Include,
-		ZWrite
+		ZWrite,
+		RayGenBegin,
+		RayGenEnd,
+		HitGroupBegin,
+		HitGroupEnd,
+		ClosestHitBegin,
+		ClosestHitEnd,
+		AnyHitBegin,
+		AnyHitEnd,
+		IntersectionBegin,
+		IntersectionEnd,
+		MissBegin,
+		MissEnd
 	};
 
 	TokenType ParseToken(std::string token)
@@ -65,6 +77,54 @@ namespace kbs
 		{
 			return TokenType::ComputeEnd;
 		}
+		else if (stripedToken == "#pragma kbs_ray_gen_begin")
+		{
+			return TokenType::RayGenBegin;
+		}
+		else if (stripedToken == "#pragma kbs_ray_gen_end")
+		{
+			return TokenType::RayGenEnd;
+		}
+		else if (stripedToken == "#pragma kbs_hit_group_begin")
+		{
+			return TokenType::HitGroupBegin;
+		}
+		else if (stripedToken == "#pragma kbs_hit_group_end")
+		{
+			return TokenType::HitGroupEnd;
+		}
+		else if (stripedToken == "#pragma kbs_closest_hit_begin")
+		{
+			return TokenType::ClosestHitBegin;
+		}
+		else if (stripedToken == "#pragma kbs_closest_hit_end")
+		{
+			return TokenType::ClosestHitEnd;
+		}
+		else if (stripedToken == "#pragma kbs_any_hit_begin")
+		{
+			return TokenType::AnyHitBegin;
+		}
+		else if (stripedToken == "#pragma kbs_any_hit_end")
+		{
+			return TokenType::AnyHitEnd;
+		}
+		else if (stripedToken == "#pragma kbs_intersection_begin")
+		{
+			return TokenType::IntersectionBegin;
+		}
+		else if (stripedToken == "#pragma kbs_intersection_end")
+		{
+			return TokenType::IntersectionEnd;
+		}
+		else if (stripedToken == "#pragma kbs_miss_begin")
+		{
+			return TokenType::MissBegin;
+		}
+		else if (stripedToken == "#pragma kbs_miss_end")
+		{
+			return TokenType::MissEnd;
+		}
 		else
 		{
 			std::vector<std::string> splitedStripedToken = string_split(stripedToken,' ');
@@ -107,6 +167,182 @@ namespace kbs
 		}
 
 		*err = "reach EOF expect #pragma kbs_vertex_end";
+		return std::nullopt;
+	}
+
+	opt<std::string> ParseAnyHitShader(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		std::string res;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p]))
+			{
+			case TokenType::Void:
+			case TokenType::None:
+				res += tokens[p] + "\n";
+				break;
+			case TokenType::AnyHitEnd:
+				p++;
+				return res;
+			default:
+				*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect #pragma kbs_any_hit_end";
+				return std::nullopt;
+			}
+			p++;
+		}
+
+		*err = "reach EOF expect #pragma kbs_any_hit_end";
+		return std::nullopt;
+	}
+
+	opt<std::string> ParseClosestHitShader(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		std::string res;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p]))
+			{
+			case TokenType::Void:
+			case TokenType::None:
+				res += tokens[p] + "\n";
+				break;
+			case TokenType::ClosestHitEnd:
+				p++;
+				return res;
+			default:
+				*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect #pragma kbs_closest_hit_end";
+				return std::nullopt;
+			}
+			p++;
+		}
+
+		*err = "reach EOF expect #pragma kbs_closest_hit_end";
+		return std::nullopt;
+	}
+
+	opt<std::string> ParseIntersectionShader(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		std::string res;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p]))
+			{
+			case TokenType::Void:
+			case TokenType::None:
+				res += tokens[p] + "\n";
+				break;
+			case TokenType::IntersectionEnd:
+				p++;
+				return res;
+			default:
+				*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect #pragma kbs_intersection_end";
+				return std::nullopt;
+			}
+			p++;
+		}
+
+		*err = "reach EOF expect #pragma kbs_intersection_end";
+		return std::nullopt;
+	}
+
+	opt<ShaderInfo::HitGroup> ParseHitGroup(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		ShaderInfo::HitGroup hitGroup;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p++]))
+			{
+				case TokenType::Void:
+					break;
+				case TokenType::HitGroupEnd:
+					return hitGroup;
+				case TokenType::AnyHitBegin:
+					if (auto var = ParseAnyHitShader(p,tokens,err); var.has_value())
+					{
+						hitGroup.anyHitShader = var.value();
+						break;
+					}
+					else
+					{
+						return std::nullopt;
+					}
+				case TokenType::ClosestHitBegin:
+					if (auto var = ParseClosestHitShader(p, tokens, err);var.has_value())
+					{
+						hitGroup.cloestHitShader = var.value();
+						break;
+					}
+					else
+					{
+						return std::nullopt;
+					}
+				case TokenType::IntersectionBegin:
+					if (auto var = ParseIntersectionShader(p, tokens,err);var.has_value())
+					{
+						hitGroup.intersectionShader = var.value();
+						break;
+					}
+					else
+					{
+						return std::nullopt;
+					}
+
+				default:
+					*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect closest hit, any hit or intersection shader begin";
+					return std::nullopt;
+			}
+			
+		}
+		return hitGroup;
+	}
+
+	opt<std::string> ParseMissShader(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		std::string res;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p]))
+			{
+			case TokenType::Void:
+			case TokenType::None:
+				res += tokens[p] + "\n";
+				break;
+			case TokenType::MissEnd:
+				p++;
+				return res;
+			default:
+				*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect #pragma kbs_miss_end";
+				return std::nullopt;
+			}
+			p++;
+		}
+
+		*err = "reach EOF expect #pragma kbs_intersection_end";
+		return std::nullopt;
+	}
+
+	opt<std::string> ParseRayGenShader(uint32_t& p, std::vector<std::string>& tokens, std::string* err)
+	{
+		std::string res;
+		while (p < tokens.size())
+		{
+			switch (ParseToken(tokens[p]))
+			{
+			case TokenType::Void:
+			case TokenType::None:
+				res += tokens[p] + "\n";
+				break;
+			case TokenType::RayGenEnd:
+				p++;
+				return res;
+			default:
+				*err = " invalid token " + tokens[p] + " in line " + std::to_string(p) + " expect #pragma kbs_ray_gen_end";
+				return std::nullopt;
+			}
+			p++;
+		}
+
+		*err = "reach EOF expect #pragma kbs_intersection_end";
 		return std::nullopt;
 	}
 
@@ -322,6 +558,42 @@ namespace kbs
 					return std::nullopt;
 				}
 				break;
+			case TokenType::MissBegin:
+				res = ParseMissShader(p, tokens, msg);
+				if (res.has_value())
+				{
+					info.rayMissShader.push_back(res.value());
+				}
+				else
+				{
+					return std::nullopt;
+				}
+				break;
+			case TokenType::RayGenBegin:
+				res = ParseRayGenShader(p, tokens, msg);
+				if (res.has_value())
+				{
+					info.rayGenShader = res.value();
+				}
+				else
+				{
+					return std::nullopt;
+				}
+				break;
+			case TokenType::HitGroupBegin:
+			{
+				auto hitGroupShader = ParseHitGroup(p, tokens, msg);
+				if (hitGroupShader.has_value())
+				{
+					info.hitGroupShader.push_back(hitGroupShader.value());
+				}
+				else
+				{
+					return std::nullopt;
+				}
+				break;
+			}
+
 			case TokenType::Include:
 				res = ParseInclude(tokens[p - 1], msg);
 				if (res.has_value())
@@ -380,6 +652,10 @@ namespace kbs
 		else if(!info.fragmentShader.empty())
 		{
 			info.type = ShaderType::Surface;
+		}
+		else if (!info.rayGenShader.empty())
+		{
+			info.type = ShaderType::RayTracing;
 		}
 		else
 		{

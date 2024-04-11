@@ -25,6 +25,8 @@ namespace kbs {
 		operator uint64_t() const { return m_UUID; }
 
 		static UUID Invalid();
+
+		bool IsInvalid();
 	private:
 		uint64_t m_UUID;
 	};

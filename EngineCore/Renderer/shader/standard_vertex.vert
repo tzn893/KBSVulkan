@@ -1,7 +1,7 @@
 #version 450
 #include "shader_common.glsli"
-#include "camera.glsli"
 #include "object.glsli"
+#include "camera.glsli"
 
 layout (location = 0) in vec3 inPos;
 layout (location = 1) in vec3 inNormal;

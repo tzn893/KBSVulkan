@@ -39,6 +39,12 @@ namespace kbs
 			Storage
 		};
 
+		enum class TextureType
+		{
+			CombinedImageSampler,
+			StorageImage
+		};
+
 		struct VariableInfo
 		{
 			VariableType type;
@@ -55,8 +61,15 @@ namespace kbs
 			BufferType type;
 		};
 
+		struct AccelerationStructureInfo
+		{
+			uint32_t binding;
+			uint32_t set;
+		};
+
 		struct TextureInfo
 		{
+			TextureType type;
 			uint32_t binding;
 			uint32_t set;
 			uint32_t arrayed;
@@ -66,20 +79,26 @@ namespace kbs
 
 		bool			  GraphicsReflectionFromBindings(std::vector<SpvReflectDescriptorBinding*>& bindings, std::string& msg);
 		bool			  ComputeReflectionFromBindings(std::vector<SpvReflectDescriptorBinding*>& bindings, std::string& msg);
+		bool			  RayTracingReflectionFromBindings(std::vector<SpvReflectDescriptorBinding*>& bindings, std::string& msg);
+		
 		opt<VariableInfo> GetVariable(const std::string& name);
 		uint32_t		  GetVariableBufferSize();
 
 		opt<BufferInfo>	  GetBuffer(const std::string& name);
 		opt<TextureInfo>  GetTexture(const std::string& name);
+		opt<AccelerationStructureInfo> GetAS(const std::string& name);
 
 		void			  IterateVariables(std::function<bool(const std::string&, VariableInfo&)>);
 		void			  IterateTextures(std::function<bool(const std::string&, TextureInfo&)>);
 		void			  IterateBuffers(std::function<bool(const std::string&, BufferInfo&)>);
 
+		std::vector<uint32_t> GetOccupiedSetIndices();
+
 	private:
 		std::unordered_map<std::string, VariableInfo> m_VariableInfos;
 		std::unordered_map<std::string, BufferInfo>   m_BufferInfos;
 		std::unordered_map<std::string, TextureInfo>  m_TextureInfos;
+		std::unordered_map<std::string, AccelerationStructureInfo> m_AccelStructInfos;
 		uint32_t									  m_VariableBufferSize;
 	};
 
@@ -95,6 +114,7 @@ namespace kbs
 
 		bool		IsGraphicsShader();
 		bool		IsComputeShader();
+		bool		IsRayTracingShader();
 
 		ShaderType  GetShaderType();
 		std::string GetShaderPath();
@@ -189,10 +209,44 @@ namespace kbs
 			Shader(ShaderType::Compute, shaderPath, manager, id), comp(computeShader){}
 
 		void OnPipelineStateCreate(GvkComputePipelineCreateInfo& info) override;
+
+		ptr<gvk::Shader> GetGvkShader() { return comp; }
+
 	private:
 		virtual bool GenerateReflection() override;
 
 		ptr<gvk::Shader> comp;
+	};
+
+	class RayTracingShader : public Shader
+	{
+	public:
+
+		RayTracingShader(gvk::RayTracingPieplineCreateInfo pipelineCI, std::string shaderPath, ShaderManager* manager, ShaderID id):
+			Shader(ShaderType::RayTracing, shaderPath, manager, id),  pipelineCI(pipelineCI){}
+		
+		gvk::RayTracingPieplineCreateInfo& OnPipelineStateCreate();
+
+	private:
+		virtual bool GenerateReflection() override;
+
+		gvk::RayTracingPieplineCreateInfo pipelineCI;
+	};
+
+
+	class ShaderMacroSet
+	{
+		friend class ShaderManager;
+	public:
+		void Define(const char* def);
+		void Define(const char* def, const char* value);
+		void Remove(const char* def);
+	private:
+		uint32_t Find(const char* def);
+		gvk::ShaderMacros GetShaderMacros();
+
+		std::vector<std::string> values;
+		std::vector<std::string> defs;
 	};
 
 	class ShaderManager
@@ -201,11 +255,13 @@ namespace kbs
 		ShaderManager();
 
 		void			 Initialize(ptr<gvk::Context> ctx);
+		ShaderMacroSet&	 GetMacroSet();
 
 		opt<ptr<Shader>> Load(const std::string& filePath);
 		opt<ptr<Shader>> Reload(const std::string& filePath) { return Load(filePath); }
 
 		opt<ptr<Shader>> Get(const ShaderID& id);
+		opt<ptr<Shader>> GetByPath(const std::string& filePath);
 		bool			 Exists(const std::string& filePath);
 	private:
 		opt<ShaderInfo>  LoadAndPreParse(const std::string& filePath, std::string& fileabsolutePath);
@@ -216,6 +272,7 @@ namespace kbs
 		std::unordered_map<ShaderID, ptr<Shader>> m_Shaders;
 		ptr<gvk::Shader>		 m_StandardVertexShader;
 		ptr<gvk::Context>		 m_Context;
+		ShaderMacroSet			 m_Macros;
 
 		friend class SurfaceShader;
 	};

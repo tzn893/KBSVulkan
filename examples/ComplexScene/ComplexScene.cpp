@@ -66,11 +66,11 @@ private:
 	ComplexSceneRenderer* renderer;
 };
 
-class RotatingCubeApplication : public kbs::Application
+class ComplexSceneApplication : public kbs::Application
 {
 public:
 
-	RotatingCubeApplication(kbs::ApplicationCommandLine& commandLine)
+	ComplexSceneApplication(kbs::ApplicationCommandLine& commandLine)
 		: Application(commandLine){}
 
 	virtual void OnUpdate() override;
@@ -87,24 +87,24 @@ namespace kbs
 {
 	Application* CreateApplication(ApplicationCommandLine& commandLines)
 	{
-		auto app = new RotatingCubeApplication(commandLines);
+		auto app = new ComplexSceneApplication(commandLines);
 		return app;
 	}
 }
 
 ptr<Scene> scene;
 ptr<ComplexSceneRenderer> renderer;
-Entity					  mainCamera;
 
 
 namespace kbs
 {}
 
 
-void RotatingCubeApplication::BeforeRun()
+void ComplexSceneApplication::BeforeRun()
 {
 	renderer = std::make_shared<ComplexSceneRenderer>();
 	scene = std::make_shared<Scene>();
+
 
 	Singleton::GetInstance<FileSystem<ShaderManager>>()->AddSearchPath(COMPLEX_SCENE_ROOT_DIRECTORY);
 	Singleton::GetInstance<FileSystem<ModelManager>>()->AddSearchPath(ASSET_ROOT_DIRECTORY);
@@ -114,16 +114,21 @@ void RotatingCubeApplication::BeforeRun()
 	info.instance.AddInstanceExtension(GVK_INSTANCE_EXTENSION_DEBUG);
 	info.instance.AddLayer(GVK_LAYER_DEBUG);
 	info.instance.AddLayer(GVK_LAYER_FPS_MONITOR);
+	info.device.AddDeviceExtension(GVK_DEVICE_EXTENSION_DEBUG_MARKER);
 
 	renderer->Initialize(m_Window, info);
 	
 	ptr<GraphicsShader> shader = std::dynamic_pointer_cast<GraphicsShader>(Singleton::GetInstance<AssetManager>()->GetShaderManager()->Load("shade.glsl").value());
 
 	RenderAPI api = renderer->GetAPI();
+	Singleton::GetInstance<AssetManager>()->GetTextureManager()->LoadDefaultTextures(api);
 	scene = std::make_shared<Scene>();
 
 	{
-		ModelID modelID = assetManager->GetModelManager()->LoadFromGLTF("models/sponza/sponza.gltf", api).value();
+		ModelLoadOption loadOpt;
+		loadOpt.flags = 0;
+
+		ModelID modelID = assetManager->GetModelManager()->LoadFromGLTF("models/sponza/sponza.gltf", api, loadOpt).value();
 		ptr<Model> model = assetManager->GetModelManager()->GetModel(modelID).value();
 
 		TransformComponent modelTransform;
@@ -139,16 +144,9 @@ void RotatingCubeApplication::BeforeRun()
 	// add main camera to scene
 	{
 		CameraComponent camera(1000, 0.1, 1, kbs::pi / 2);
-		TransformComponent trans(kbs::vec3(), kbs::quat(), kbs::vec3(1, 1, 1));
-		trans.parent = scene->GetRootID();
-
-		mainCamera = scene->CreateEntity("main camera");
-		mainCamera.AddComponent<CameraComponent>(camera);
-		mainCamera.AddComponent<TransformComponent>(trans);
-
-		Transform cameraTrans(trans, mainCamera);
-		//cameraTrans.SetPosition(kbs::vec3(0, 0, 0));
-		mainCamera.GetComponent<TransformComponent>() = cameraTrans.GetComponent();
+		TransformComponent trans = scene->CreateTransform({}, kbs::vec3(), kbs::quat(), kbs::vec3(1, 1, 1));
+	
+		scene->CreateMainCamera(trans, camera);
 	}
 }
 
@@ -157,15 +155,16 @@ vkrg::RenderPassHandle ComplexSceneRenderer::GetMaterialTargetRenderPass(RenderP
 	return mainRenderPass;
 }
 
-void RotatingCubeApplication::OnUpdate()
+void ComplexSceneApplication::OnUpdate()
 {
-	
 	{
 		angle = Angle::FromDegree(100.f * m_Timer->TotalTime());
+		Entity mainCamera = scene->GetMainCamera();
+
 		TransformComponent& comp = mainCamera.GetComponent<TransformComponent>();
 		Transform cameraTrans(mainCamera.GetComponent<TransformComponent>(), mainCamera);
-		cameraTrans.SetLocalRotation(kbs::math::axisAngle(kbs::vec3(0, 1, 0), angle));
-		// cameraTrans.SetLocalPosition(kbs::vec3(0, math::sin(angle) + 3, 0));
+		cameraTrans.SetLocalRotation(kbs::math::axisAngle(kbs::vec3(1, 1, 1), angle));
+		cameraTrans.SetLocalPosition(kbs::vec3(0, math::sin(angle) + 3, 0));
 		comp = cameraTrans.GetComponent();
 	}
 	
@@ -220,7 +219,7 @@ bool ComplexSceneRenderer::InitRenderGraph(ptr<kbs::Window> window, ptr<vkrg::Re
 
 void ComplexSceneMainPass::OnRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd)
 {
-	RenderCamera renderCamera(mainCamera);
+	RenderCamera renderCamera(scene->GetMainCamera());
 
 	RenderFilter filter;
 	filter.flags = RenderPass_Opaque;

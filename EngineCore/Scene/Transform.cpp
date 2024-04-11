@@ -1,5 +1,6 @@
 #include "Transform.h"
 #include "Scene/Entity.h"
+#include "math.h"
 
 namespace kbs
 {
@@ -32,7 +33,7 @@ namespace kbs
         TranverseParentTransform(
             [&](TransformComponent& parentTrans)
             {
-                front = parentTrans.rotation * front;
+                front = vec3(math::quat2mat(m_Trans.rotation) * vec4(front, 0.f));
             }
         );
         return front;
@@ -41,7 +42,8 @@ namespace kbs
     vec3 Transform::GetLocalFront() 
     {
         vec3 front = vec3(0, 0, 1);
-        return m_Trans.rotation * front;
+        vec4 res = math::quat2mat(m_Trans.rotation) * vec4(front, 0.f);
+        return vec3(res);
     }
 
     vec3 Transform::GetRight() 
@@ -50,7 +52,7 @@ namespace kbs
         TranverseParentTransform(
             [&](TransformComponent& parentTrans)
             {
-                right = parentTrans.rotation * right;
+                right = vec3(math::quat2mat(m_Trans.rotation) * vec4(right, 0.f));
             }
         );
         return right;
@@ -59,7 +61,7 @@ namespace kbs
     vec3 Transform::GetLocalRight() 
     {
         vec3 right = vec3(1, 0, 0);
-        return m_Trans.rotation * right;
+        return vec3(math::quat2mat(m_Trans.rotation) * vec4(right, 0.f));
     }
 
     quat kbs::Transform::GetRotation() 
@@ -90,12 +92,38 @@ namespace kbs
         }
     }
 
+
+	//Quaternion FromToRotation(Vector3 startDirection, Vector3 endDirection) {
+
+	//	Vector3 crossProduct = Cross(startDirection, endDirection);
+
+	//	float sineOfAngle = Length(crossProduct);
+
+	//	float angle = Asin(sineOfAngle);
+	//	Vector3 axis = crossProduct / sineOfAngle;
+
+	//	Vector3 imaginary = Sin(angle / 2.0f) * axis;
+
+	//	Quaternion result;
+	//	result.w = Cos(angle / 2.0f);
+	//	result.x = imaginary.x;
+	//	result.y = imaginary.y;
+	//	result.z = imaginary.z;
+
+	//	return result;
+	//}
+
     void Transform::FaceDirection(vec3 dir)
     {
+        dir = math::normalize(dir);
         quat rotation = GetRotation();
         dir = glm::inverse(rotation)* dir;
 
         vec3  axis  = math::cross(vec3(0, 0, 1), dir);
+        if (math::length(axis) < 1e-5)
+        {
+            return;
+        }
         Angle angle = math::acos(math::dot(vec3(0, 0, 1), dir));
         m_Trans.rotation = math::axisAngle(axis, angle);
     }

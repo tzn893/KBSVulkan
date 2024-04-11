@@ -107,6 +107,37 @@ namespace kbs {
 		return newScene;
 	}
 
+	kbs::Entity Scene::CreateMainCamera(const TransformComponent& trans, const CameraComponent& camera)
+	{
+		KBS_ASSERT(!m_MainCamera.has_value(), "one main camera can be created for a scene");
+		Entity mainCameraEntity = CreateEntity("MainCamera");
+		m_MainCamera = mainCameraEntity.GetUUID();
+
+		mainCameraEntity.AddComponent<TransformComponent>(trans);
+		mainCameraEntity.AddComponent<CameraComponent>(camera);
+
+		return mainCameraEntity;
+	}
+
+	kbs::Entity Scene::GetMainCamera()
+	{
+		KBS_ASSERT(m_MainCamera.has_value(), "main camera must be created");
+		return GetEntityByUUID(m_MainCamera.value());
+	}
+
+	kbs::TransformComponent Scene::CreateTransform(opt<Entity> parent, const vec3& position, const quat& rot, const vec3& scale)
+	{
+		UUID root = m_Root;
+		if (parent.has_value())
+		{
+			root = parent->GetUUID();
+		}
+
+		TransformComponent comp(position, rot, scale);
+		comp.parent = root;
+		return comp;
+	}
+
 	Entity Scene::CreateEntity(const std::string& name)
 	{
 		return CreateEntityWithUUID(UUID::GenerateUncollidedID(m_EntityMap), name);

@@ -19,5 +19,5 @@ void main()
 {
     vec3 albedoColor = texture(albedo, inUV).xyz;
 
-    oColor = vec4(albedoColor * mat.baseColor, 1);
+    oColor = vec4(inUV , 1.0, 1.0);
 }

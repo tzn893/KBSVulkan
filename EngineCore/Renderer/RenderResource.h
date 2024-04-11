@@ -11,6 +11,17 @@ namespace kbs
 		RenderBuffer(ptr<gvk::Buffer> buffer);
 		
 		ptr<gvk::Buffer> GetBuffer();
+
+		template<typename T>
+		void Write(const T& data, uint32_t offset = 0)
+		{
+			buffer->Write(&data, offset, sizeof(T));
+		}
+
+		inline void Write(void* data, uint32_t size, uint32_t offset = 0)
+		{
+			buffer->Write(data, offset, size);
+		}
 	
 	private:
 		ptr<gvk::Buffer> buffer;

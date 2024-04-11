@@ -66,18 +66,65 @@ namespace kbs
 		}
 	};
 
+	struct LightComponent
+	{
+		enum LightType
+		{
+			Area = 0,
+			Sphere = 1,
+			Directional = 2,
+			ConstantEnvoriment = 3
+			// Point = 3
+		} type;
+
+		vec3 intensity;
+		union 
+		{
+			struct 
+			{
+				float radius;
+			} sphere;
+
+			struct 
+			{
+				vec3 u;
+				vec3 v;
+				float area;
+			} area;
+		};
+		
+		LightComponent() = default;
+		LightComponent(const LightComponent&) = default;
+	};
+
 	struct RenderableComponent
 	{
+		constexpr static uint32_t maxPassCount = 8;
+		uint64_t	renderOptionFlags[maxPassCount];
 		// uuid of material in material manager
 		// TODO: multiple materials aka. multiple render passes
-		UUID		targetMaterial;
+		UUID		targetMaterials[maxPassCount];
 		// uuid of mesh in mesh pool
 		UUID		targetMesh;
 		// flags for some render options
-		uint64_t	renderOptionFlags;
+		uint32_t	passCount;
+
+
+		void AddRenderablePass(UUID targetMaterial, uint64_t renderOptionFlag);
+		void RemoveRenderablePass(UUID targetMaterial);
+
 
 		RenderableComponent(const RenderableComponent&) = default;
-		RenderableComponent() = default;
+		RenderableComponent()
+		{
+			passCount = 0;
+			targetMesh = UUID::Invalid();
+			for (uint32_t i = 0;i < maxPassCount;i++)
+			{
+				renderOptionFlags[i] = 0;
+				targetMaterials[i] = UUID::Invalid();
+			}
+		}
 	};
 
 	struct CameraComponent
@@ -92,9 +139,19 @@ namespace kbs
 		{}
 	};
 
+	
+	struct RayTracingGeometryComponent
+	{
+		RayTracingGeometryComponent() = default;
+		RayTracingGeometryComponent(const RayTracingGeometryComponent&) = default;
 
+		bool opaque;
+		UUID rayTracingMaterial;
+	};
+	
 	template<typename ...Args>
 	struct ComponentGroup {};
-	using AllCopiableComponents = ComponentGroup<TransformComponent, RenderableComponent, CameraComponent, CustomScriptCompoent>;
+	using AllCopiableComponents = ComponentGroup<TransformComponent, RenderableComponent, CameraComponent, CustomScriptCompoent, RayTracingGeometryComponent,
+		LightComponent>;
 
 }

@@ -1,0 +1,138 @@
+#pragma kbs_shader
+#pragma kbs_compute_begin
+
+#version 450
+#include "surfelCommon.glsl"
+#include "frustrum.glsl"
+#include "random.glsl"
+
+#extension GL_EXT_debug_printf : enable
+
+layout(set = 0, binding = 0) buffer _SurfelAccelerationStructure
+{
+#ifndef SURFEL_SPARSE_OPTIMIZED
+    SurfelAccelerationStructure accelStruct;
+#else
+    SurfelAccelerationStructureV2 accelStruct;
+#endif
+};
+
+layout(set = 0, binding = 1) buffer _SurfelBuffer
+{
+    SurfelBuffer surfels;
+};
+
+layout(set = 1, binding = 0) uniform _SurfelGlobalUniform
+{
+    SurfelGlobalUniform globalUniform;
+};
+
+layout(set = 0, binding = 2) buffer _SurfelIndexBuffer
+{
+    SurfelIndexBuffer surfelIdxBuffer;
+};
+
+#ifdef SURFEL_SPARSE_OPTIMIZED
+
+void TagAccelerationStructure(SurfelInfo surfel, SurfelGlobalUniform uni, int surfelIdx)
+{
+    ivec3 originalGridIdx = ivec3((surfel.position - uni.accelerationStructurePosition) / uni.surfelCellExtent);
+    int originCellIdx = GetGridCellIdx(uni, surfel.position);
+
+    for(int i = 0;i < 27;i++)
+    {
+        int dx = i % 3 - 1;
+        int dy = (i / 3) % 3 - 1;
+        int dz = i / 9;
+
+        ivec3 gridIdx = originalGridIdx + ivec3(dx, dy, dz);
+        
+        if(gridIdx.x >= 0 && gridIdx.x <  SURFEL_GRID_COUNT && 
+            gridIdx.y >= 0 && gridIdx.y < SURFEL_GRID_COUNT && 
+            gridIdx.z >= 0 && gridIdx.z < SURFEL_GRID_COUNT)
+        {
+            int cellIdx = GetNeighborCellIdx(originCellIdx, dx, dy, dz);
+            if(GridSurfelCellIntersection(globalUniform, cellIdx, surfel) != 0)
+            {
+                //debugPrintfEXT("cell idx %d surfel idx %d", cellIdx, surfelIdx);
+                accelStruct.cellDirtyFlag[cellIdx]= 1; 
+            }
+        }
+    }
+}
+
+#endif
+
+
+
+float surfelRecycleHeuristic(SurfelInfo surfel, int liveSurfelCount)
+{
+    /*
+    we employ a recycling heuristic based on some factors. These factors include: 
+    1. How many surfels are currently live. 
+    2. When the surfel last contributed to the lighting of the scene. 
+    3. How far away the  surfel is. 
+    These factors are combined and compared to a random number pulled from the 
+    uniform distribution, giving surfels that are less relevant a higher 
+    probability to be recycled.
+    */
+    float surfelDistance = distance(surfel.position, globalUniform.cameraPosition);
+    float liveSurfelRatio = float(liveSurfelCount) / float(MAX_SURFEL_BUFFER_COUNT);
+    int   surfelLastContributionDistance = int(globalUniform.currentFrame - surfel.lastContributionFrame);
+
+    float x = liveSurfelRatio;
+    float f = 1 - (x - 0.5) / 0.4;
+    if(1.0 > x && x > 0.8) f = 6.25 * x * x - 12.5 * x + 6.25;
+
+    float e = clamp(f, 0.0, 1.0);
+
+    e = pow(e, (1 + max(surfelDistance - 50.0, 0.0) / 50.0) * surfelLastContributionDistance / 100.0);
+
+    return e;
+}
+
+layout (local_size_x = 256,local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    int idx = int(gl_GlobalInvocationID.x);
+    if(idx >= surfelIdxBuffer.liveSurfelCount) return;
+
+    int liveSurfelIdx = atomicAdd(surfelIdxBuffer.liveSurfelCount, -1) - 1;
+    int surfelIdx = surfelIdxBuffer.liveSurfelIdx[liveSurfelIdx];
+
+    SurfelInfo surfelInfo = surfels.surfels[surfelIdx];
+
+    int intersectionResult = KBSFrustrumSphereIntersection(globalUniform.frustrum, vec4(surfelInfo.position, surfelInfo.radius));
+    if(intersectionResult != 0) surfelInfo.lastContributionFrame = globalUniform.currentFrame;
+    surfels.surfels[surfelIdx] = surfelInfo;
+
+    // recycle surfel randomly by heuristic
+    float heuristic = surfelRecycleHeuristic(surfelInfo, liveSurfelIdx + 1);
+    float uniformDistributionSample = rand_i1_1(liveSurfelIdx, int(globalUniform.currentFrame));
+
+    if(uniformDistributionSample < heuristic)
+    {
+        int liveSurfelNewIdx = atomicAdd(surfelIdxBuffer.liveSurfelCount, 1);
+        surfelIdxBuffer.liveSurfelIdx[liveSurfelNewIdx] = surfelIdx;
+
+        #ifdef SURFEL_SPARSE_OPTIMIZED
+            TagAccelerationStructure(surfelInfo, globalUniform, surfelIdx);
+        #endif
+    }
+    else
+    {
+        debugPrintfEXT("culling triggered");
+        // cull unused surfels
+        int avaliableSurfelNewIdx = atomicAdd(surfelIdxBuffer.avaliableSurfelCount, 1);
+        surfelIdxBuffer.avaliableSurfelIdx[avaliableSurfelNewIdx] = surfelIdx;
+    }
+    
+
+    if(gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0)
+    {
+        //debugPrintfEXT("live surfel count %d", surfelIdxBuffer.liveSurfelCount);
+    }
+}
+
+#pragma kbs_compute_end

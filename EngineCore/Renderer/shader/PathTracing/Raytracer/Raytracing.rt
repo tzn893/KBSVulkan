@@ -1,0 +1,29 @@
+#pragma kbs_shader
+
+#pragma kbs_ray_gen_begin
+    #version 460
+    #include "Raytracing.compiled.rgen"
+
+#pragma kbs_ray_gen_end
+
+#pragma kbs_hit_group_begin
+
+    #pragma kbs_closest_hit_begin
+        #version 460
+        #include "Raytracing.compiled.rchit"
+
+    #pragma kbs_closest_hit_end
+#pragma kbs_hit_group_end
+
+
+#pragma kbs_miss_begin
+    #version 460
+    #include "Raytracing.compiled.rmiss"
+
+#pragma kbs_miss_end
+
+#pragma kbs_miss_begin
+    #version 460
+    #include "Shadow.compiled.rmiss"
+
+#pragma kbs_miss_end

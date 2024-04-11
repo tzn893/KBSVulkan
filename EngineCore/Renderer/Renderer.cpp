@@ -7,6 +7,8 @@ namespace kbs
 {
     bool kbs::Renderer::Initialize(ptr<kbs::Window> window, RendererCreateInfo& info)
     {
+        m_FrameCounter = 0;
+
         m_Window = window;
         std::string msg;
         if (auto ctx = gvk::Context::CreateContext(info.appName.c_str(), GVK_VERSION{ 1, 0, 0 }, VK_API_VERSION_1_3, window->GetGvkWindow(), &msg);
@@ -19,6 +21,7 @@ namespace kbs
             KBS_WARN("fail to create context for renderer reason : {}", msg.c_str());
             return false;
         }
+
 
         if (!m_Context->InitializeInstance(info.instance, &msg))
         {
@@ -34,6 +37,10 @@ namespace kbs
             KBS_WARN("fail to initialize device for renderer reason : {}", msg.c_str());
             return false;
         }
+
+        m_APIDescriptorSetAllocator = m_Context->CreateDescriptorAllocator();
+		// TODO better way initialize AssetManager::ShaderManager
+		Singleton::GetInstance<AssetManager>()->GetShaderManager()->Initialize(m_Context);
 
         m_BackBufferFormat = m_Context->PickBackbufferFormatByHint({ VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R8G8B8A8_UNORM });
         if (!m_Context->CreateSwapChain(m_BackBufferFormat, &msg))
@@ -73,8 +80,6 @@ namespace kbs
             m_ColorOutputFinish.push_back(m_Context->CreateVkSemaphore().value());
         }
 
-        // TODO better way initialize AssetManager::ShaderManager
-        Singleton::GetInstance<AssetManager>()->GetShaderManager()->Initialize(m_Context);
 
         return true;
     }
@@ -107,78 +112,102 @@ namespace kbs
     RenderAPI Renderer::GetAPI()
     {
         KBS_ASSERT(m_Context != nullptr, "you can get render api only after renderer has been initialized");
-        return RenderAPI(m_Context);
+        return RenderAPI(m_Context, m_APIDescriptorSetAllocator);
     }
 
-    void Renderer::RenderSceneByCamera(ptr<Scene> scene, RenderCamera& camera, RenderFilter filter, VkCommandBuffer cmd)
+    RenderableObjectSorter Renderer::GetDefaultRenderableObjectSorter(vec3 cameraPosition)
     {
-        AssetManager* assetManager = Singleton::GetInstance<AssetManager>();
-        m_CameraBuffer->GetBuffer()->Write(&camera.GetCameraUBO(), 0, sizeof(CameraUBO));
-
-        struct RenderableObject
+        auto sort_by_distance = [cameraPosition](RenderableObject& lhs, RenderableObject& rhs)
         {
-            UUID id;
-            RenderableComponent render;
-            Transform           transform;
-        };
-
-        std::vector<RenderableObject> objects;
-        auto sort_by_distance = [&](RenderableObject& lhs, RenderableObject& rhs)
-        {
-            if ((lhs.render.renderOptionFlags & RenderOption_DontCullByDistance) != (rhs.render.renderOptionFlags & RenderOption_DontCullByDistance))
+            if ((lhs.targetRenderFlag & RenderOption_DontCullByDistance) != (rhs.targetRenderFlag & RenderOption_DontCullByDistance))
             {
-                return kbs_contains_flags(lhs.render.renderOptionFlags, RenderOption_DontCullByDistance);
+                return kbs_contains_flags(lhs.targetRenderFlag, RenderOption_DontCullByDistance);
             }
 
-            vec3 cameraPos = camera.GetCameraTransform().GetPosition();
+            vec3 cameraPos = cameraPosition;
             return math::length(cameraPos - lhs.transform.GetPosition()) < math::length(cameraPos - rhs.transform.GetPosition());
         };
         auto sort_by_mesh = [&](RenderableObject& lhs, RenderableObject& rhs)
         {
-            ShaderID lhsShaderID = GetMaterialByID(lhs.render.targetMaterial)->GetShader()->GetShaderID();
-            ShaderID rhsShaderID = GetMaterialByID(rhs.render.targetMaterial)->GetShader()->GetShaderID();
+            ShaderID lhsShaderID = GetMaterialByID(lhs.targetMaterial)->GetShader()->GetShaderID();
+            ShaderID rhsShaderID = GetMaterialByID(rhs.targetMaterial)->GetShader()->GetShaderID();
 
-            if(lhsShaderID != rhsShaderID)
+            if (lhsShaderID != rhsShaderID)
             {
                 return lhsShaderID < rhsShaderID;
             }
-            if (lhs.render.targetMaterial != rhs.render.targetMaterial)
+            if (lhs.targetMaterial != rhs.targetMaterial)
             {
-                return lhs.render.targetMaterial < rhs.render.targetMaterial;
+                return lhs.targetMaterial < rhs.targetMaterial;
             }
-            MeshGroupID lhsGroup = GetMeshGroupByComponent(lhs.render)->GetID();
-            MeshGroupID rhsGroup = GetMeshGroupByComponent(rhs.render)->GetID();
+            MeshGroupID lhsGroup = GetMeshGroupByMesh(lhs.targetMeshID)->GetID();
+            MeshGroupID rhsGroup = GetMeshGroupByMesh(rhs.targetMeshID)->GetID();
 
             if (lhsGroup != rhsGroup)
             {
                 return lhsGroup < rhsGroup;
             }
-            
+
             return lhs.id < rhs.id;
         };
+        auto defaultObjectSorter = [&](std::vector<RenderableObject>& objects)
+        {
+            std::sort(objects.begin(), objects.end(), sort_by_distance);
+            if (objects.size() > m_ObjectPoolSize)
+            {
+                objects.erase(objects.begin() + m_ObjectPoolSize, objects.end());
+            }
+            std::sort(objects.begin(), objects.end(), sort_by_mesh);
+        };
+        return defaultObjectSorter;
+    }
+
+    RenderShaderFilter Renderer::GetDefaultShaderFilter()
+    {
+        return[](const ShaderID&) {return true; };
+    }
+
+
+    // CollectRenderableObjects() + RenderObjects()
+    void Renderer::RenderSceneByCamera(ptr<Scene> scene, RenderCamera& camera, RenderFilter filter, VkCommandBuffer cmd)
+    {
+        AssetManager* assetManager = Singleton::GetInstance<AssetManager>();
+        m_CameraBuffer->GetBuffer()->Write(&camera.GetCameraUBO(), 0, sizeof(CameraUBO));
+
+        std::vector<RenderableObject> objects;
+        
+
+        if (filter.renderableObjectSorter == nullptr)
+        {
+            filter.renderableObjectSorter = GetDefaultRenderableObjectSorter(camera.GetCameraTransform().GetPosition());
+        }
+        if (filter.shaderFilter == nullptr)
+        {
+            filter.shaderFilter = GetDefaultShaderFilter();
+        }
 
         scene->IterateAllEntitiesWith<RenderableComponent>
             (
                 [&](Entity e)
                 {
                     RenderableComponent render = e.GetComponent<RenderableComponent>();
-                    ptr<Material>  mat = assetManager->GetMaterialManager()->GetMaterialByID(render.targetMaterial).value();
 
-                    if (kbs_contains_flags(mat->GetRenderPassFlags(), filter.flags))
+                    for (uint32_t i = 0;i < render.passCount;i++)
                     {
-                        TransformComponent  trans = e.GetComponent<TransformComponent>();
-                        IDComponent idcomp = e.GetComponent<IDComponent>();
-                        objects.push_back(RenderableObject{ idcomp.ID, render, Transform(trans, e) });
+                        ptr<Material>  mat = assetManager->GetMaterialManager()->GetMaterialByID(render.targetMaterials[i]).value();
+
+                        if (kbs_contains_flags(mat->GetRenderPassFlags(), filter.flags) && filter.shaderFilter(mat->GetShader()->GetShaderID()))
+                        {
+                            TransformComponent  trans = e.GetComponent<TransformComponent>();
+                            IDComponent idcomp = e.GetComponent<IDComponent>();
+                            objects.push_back(RenderableObject{ idcomp.ID, render.targetMaterials[i], render.renderOptionFlags[i], render.targetMesh, Transform(trans, e)});
+                        }
                     }
                 }
         );
 
-        std::sort(objects.begin(), objects.end(), sort_by_distance);
-        if (objects.size() > m_ObjectPoolSize)
-        {
-            objects.erase(objects.begin() + m_ObjectPoolSize, objects.end());
-        }
-        std::sort(objects.begin(), objects.end(), sort_by_mesh);
+        filter.renderableObjectSorter(objects);
+        KBS_ASSERT(objects.size() <= m_ObjectPoolSize);
 
         ShaderID   bindedShaderID;
         MaterialID bindedMaterialID;
@@ -189,7 +218,7 @@ namespace kbs
             ObjectUBO objectUbo = objects[i].transform.GetObjectUBO();
             m_ObjectUBOPool->GetBuffer()->Write(&objectUbo, sizeof(ObjectUBO) * i, sizeof(ObjectUBO));
 
-            ptr<Material> mat = GetMaterialByID(objects[i].render.targetMaterial);
+            ptr<Material> mat = GetMaterialByID(objects[i].targetMaterial);
             if (mat->GetShader()->GetShaderID() != bindedShaderID)
             {
                 bindedShaderID = mat->GetShader()->GetShaderID();
@@ -200,9 +229,9 @@ namespace kbs
             }
 
             ptr<gvk::Pipeline>      materialPipeline = m_ShaderPipelines[bindedShaderID];
-            if (objects[i].render.targetMaterial != bindedMaterialID)
+            if (objects[i].targetMaterial != bindedMaterialID)
             {
-                bindedMaterialID = objects[i].render.targetMaterial;
+                bindedMaterialID = objects[i].targetMaterial;
                 ptr<gvk::DescriptorSet> materialDescriptorSet = m_MaterialDescriptors[bindedMaterialID];
 
                 if (materialDescriptorSet != nullptr)
@@ -218,19 +247,24 @@ namespace kbs
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 materialPipeline->GetPipelineLayout(), (uint32_t)ShaderSetUsage::perObject, 1, &m_ObjectDescriptorSetPool[i], 0, NULL);
 
-            ptr<MeshGroup> meshGroup = GetMeshGroupByComponent(objects[i].render);
+            ptr<MeshGroup> meshGroup = GetMeshGroupByMesh(objects[i].targetMeshID);
             if (meshGroup->GetID() != bindedMeshGroupID)
             {
                 bindedMeshGroupID = meshGroup->GetID();
                 meshGroup->BindVertexBuffer(cmd);
             }
-            Mesh mesh = GetMeshByComponent(objects[i].render);
+            Mesh mesh = GetMeshByMeshID(objects[i].targetMeshID);
             mesh.Draw(cmd, 1);
         }
 
     }
 
-    bool Renderer::InitializeMaterialPipelines()
+	uint32_t Renderer::GetCurrentFrameIdx()
+	{
+        return m_FrameCounter;
+	}
+
+	bool Renderer::InitializeMaterialPipelines()
     {
         View<ptr<Material>> mats = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->GetMaterials();
         m_MaterialDescriptorAllocator = m_Context->CreateDescriptorAllocator();
@@ -430,21 +464,23 @@ namespace kbs
         return mat.value();
     }
 
-    ptr<MeshGroup> Renderer::GetMeshGroupByComponent(const RenderableComponent& comp)
+    ptr<MeshGroup> Renderer::GetMeshGroupByMesh(const MeshID& id)
     {
         ptr<MeshPool> pool = Singleton::GetInstance<AssetManager>()->GetMeshPool();
-        return pool->GetMeshGroup(pool->GetMesh(comp.targetMesh)->GetMeshGroupID()).value();
+        return pool->GetMeshGroup(pool->GetMesh(id)->GetMeshGroupID()).value();
     }
 
-    Mesh Renderer::GetMeshByComponent(const RenderableComponent& comp)
+    Mesh Renderer::GetMeshByMeshID(const MeshID& id)
     {
         ptr<MeshPool> pool = Singleton::GetInstance<AssetManager>()->GetMeshPool();
-        return pool->GetMesh(comp.targetMesh).value();
+        return pool->GetMesh(id).value();
     }
 
     void kbs::Renderer::RenderScene(ptr<Scene> scene)
     {
         // TODO better way to initialize materials
+        OnSceneRender(scene);
+
         static bool materialInitialized = false;
         if (!materialInitialized)
         {
@@ -504,7 +540,153 @@ namespace kbs
             m_Fences[currentFenceIdx]);
 
         m_Context->Present(gvk::SemaphoreInfo().Wait(colorOutputFinish, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT));
+        m_FrameCounter++;
     }
+
+    void RendererPass::SetTargetCamera(const RenderCamera& camera)
+    {
+        m_Camera = camera;
+    }
+
+    void RendererPass::SetTargetScene(ptr<Scene> scene)
+    {
+        m_TargetScene = scene;
+    }
+
+    ptr<vkrg::RenderPass> RendererPass::InitializePass(Renderer* renderer, ptr<gvk::Context> ctx,
+        ptr<vkrg::RenderGraph> graph, RendererAttachmentDescriptor& desc,
+        const std::string& name)
+    {
+        auto passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Graphics).value();
+        m_RenderPassHandle = passHandle;
+
+        Initialize(passHandle.pass, desc, ctx);
+
+        m_Renderer = renderer;
+        m_Context = ctx;
+
+        return passHandle.pass;
+    }
+
+    void RendererPass::OnRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd)
+    {
+        if (m_PerdrawDescriptorSet != nullptr)
+        {
+            GvkDescriptorSetBindingUpdate(cmd, m_PerdrawDummyPipeline)
+                .BindDescriptorSet(m_PerdrawDescriptorSet)
+                .Update();
+        }
+       
+        OnSceneRender(ctx, cmd, m_Camera, m_TargetScene);
+    }
+
+    vkrg::RenderPassHandle RendererPass::GetRenderPassHandle()
+    {
+        return m_RenderPassHandle;
+    }
+
+    RendererPass::PassParameterUpdater RendererPass::UpdatePassParameter()
+    {
+        RendererPass::PassParameterUpdater updater(m_Context, m_PerdrawDescriptorSet, m_Renderer->GetAPI());
+        return updater;
+    }
+
+
+
+    void RendererPass::SetUpPerpassParameterSet(ShaderID targetShaderID)
+    {
+        ptr<ShaderManager> shaderManager = Singleton::GetInstance<AssetManager>()->GetShaderManager();
+        ptr<Shader> shader = shaderManager->Get(targetShaderID).value();
+
+        KBS_ASSERT(shader->IsGraphicsShader(), "the Perpass parameter set can only be initialized by graphics shader");
+        ptr<GraphicsShader> gShader = std::dynamic_pointer_cast<GraphicsShader>(shader);
+
+        GvkGraphicsPipelineCreateInfo pipelineCI;
+        gShader->OnPipelineStateCreate(pipelineCI);
+        
+        m_PerdrawDummyPipeline = m_Context->CreateGraphicsPipeline(pipelineCI).value();
+        auto setLayout = m_PerdrawDummyPipeline->GetInternalLayout((uint32_t)ShaderSetUsage::perDraw);
+        KBS_ASSERT(setLayout.has_value(), "the per draw set must be used by target shader");
+
+        m_PerdrawDescriptorSet = m_Renderer->GetAPI().AllocateDescriptorSet(setLayout.value());
+    }
+
+    void RendererPass::RenderSceneByCamera(RenderFilter filter, VkCommandBuffer cmd)
+    {
+        m_Renderer->RenderSceneByCamera(m_TargetScene, m_Camera, filter, cmd);
+    }
+
+
+    void RendererPass::PassParameterUpdater::UpdateImage(const std::string& name,VkImageView view, const std::string& samplerName, VkImageLayout layout)
+    {   
+        auto sampler = api.CreateSamplerByName(samplerName);
+        KBS_ASSERT(sampler.has_value(), "invalid sampler name : {}", samplerName.c_str());
+        UpdateImage(name, view, sampler.value(), layout);
+    }
+
+    void RendererPass::PassParameterUpdater::UpdateImage(const std::string& name, VkImageView view, VkSampler sampler, VkImageLayout layout)
+    {
+        GvkDescriptorSetWrite()
+            .ImageWrite(set, name.c_str(), sampler, view, layout)
+        .Emit(ctx->GetDevice());
+    }
+
+	ptr<vkrg::RenderPass> ComputePass::InitializePass(Renderer* render, ptr<vkrg::RenderGraph> graph, RendererAttachmentDescriptor& desc, const std::string& name)
+	{
+        m_Renderer = render;
+
+        auto passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Compute);
+        KBS_ASSERT(passHandle.has_value(), "fail to add compute pass {} to render graph", name.c_str());
+        m_ComputePassHandle = passHandle.value();
+
+        Initialize(m_ComputePassHandle.pass, desc);
+
+        return m_ComputePassHandle.pass;
+	}
+
+	vkrg::RenderPassHandle ComputePass::GetRenderPassHandle()
+	{
+        return m_ComputePassHandle;
+	}
+
+	void ComputePass::OnRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd)
+	{
+        OnDispatch(ctx, cmd);
+	}
+
+	kbs::RenderAPI ComputePass::GetRenderAPI()
+	{
+        return m_Renderer->GetAPI();
+	}
+
+	kbs::ptr<vkrg::RenderPass> RayTracingPass::InitializePass(Renderer* render, ptr<vkrg::RenderGraph> graph, RendererAttachmentDescriptor& desc, const std::string& name)
+	{
+		m_Renderer = render;
+
+		auto passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Raytracing);
+		KBS_ASSERT(passHandle.has_value(), "fail to add ray tracing pass {} to render graph", name.c_str());
+		m_RTPassHandle = passHandle.value();
+
+		Initialize(m_RTPassHandle.pass, desc);
+
+		return m_RTPassHandle.pass;
+	}
+
+	vkrg::RenderPassHandle RayTracingPass::GetRenderPassHandle()
+	{
+        return m_RTPassHandle;
+	}
+
+	void RayTracingPass::OnRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd)
+	{
+        OnDispatch(ctx, cmd);
+	}
+
+	kbs::RenderAPI RayTracingPass::GetRenderAPI()
+	{
+        return m_Renderer->GetAPI();
+	}
+
 }
 
 bool kbs::Renderer::CompileRenderGraph(std::string& msg)
@@ -514,6 +696,7 @@ bool kbs::Renderer::CompileRenderGraph(std::string& msg)
     options.flightFrameCount = 3;
     options.screenHeight = m_Window->GetHeight();
     options.screenWidth = m_Window->GetWidth();
+    options.setDebugName = true;
 
     vkrg::RenderGraphDeviceContext ctx;
     ctx.ctx = m_Context;
@@ -526,4 +709,6 @@ bool kbs::Renderer::CompileRenderGraph(std::string& msg)
     }
     return true;
 }
+
+
 

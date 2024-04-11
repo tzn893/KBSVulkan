@@ -1,26 +1,27 @@
 #include "Material.h"
 #include "Core/Log.h"
+#include "Asset/AssetManager.h"
 
 namespace kbs
 {
 
-    kbs::Material::Material(const UUID& id, const std::string& name, ptr<GraphicsShader> shader, ptr<RenderBuffer> buffer)
-        :m_Shader(shader), m_MaterialBuffer(buffer), m_Name(name), m_ID(id)
+    kbs::Material::Material(const UUID& id, const std::string& name, ShaderID shader, ptr<RenderBuffer> buffer)
+        :m_ShaderID(shader), m_MaterialBuffer(buffer), m_Name(name), m_ID(id)
     {
         if (buffer != nullptr)
         {
-            KBS_ASSERT(m_MaterialBuffer->GetBuffer()->GetSize() == shader->GetShaderReflection().GetVariableBufferSize(),
+            KBS_ASSERT(m_MaterialBuffer->GetBuffer()->GetSize() == GetShaderByID()->GetShaderReflection().GetVariableBufferSize(),
                 "render buffer passed to material must have the same size as variable buffer in shader");
         }
         else
         {
-            KBS_ASSERT(shader->GetShaderReflection().GetVariableBufferSize() == 0, "render buffer passed to material must have the same size as variable buffer in shader");
+            KBS_ASSERT(GetShaderByID()->GetShaderReflection().GetVariableBufferSize() == 0, "render buffer passed to material must have the same size as variable buffer in shader");
         }
     }
 
     void kbs::Material::SetInt(const std::string& name, int val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Int)
         {
@@ -30,7 +31,7 @@ namespace kbs
 
     void kbs::Material::SetFloat(const std::string& name, float val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Float)
         {
@@ -40,7 +41,7 @@ namespace kbs
 
     void kbs::Material::SetVec2(const std::string& name, vec2 val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Float2)
         {
@@ -50,7 +51,7 @@ namespace kbs
 
     void kbs::Material::SetVec3(const std::string& name, vec3 val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Float3)
         {
@@ -60,7 +61,7 @@ namespace kbs
 
     void kbs::Material::SetVec4(const std::string& name, vec4 val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Float4)
         {
@@ -70,7 +71,7 @@ namespace kbs
 
     void kbs::Material::SetMat4(const std::string& name, mat4 val)
     {
-        auto var = m_Shader->GetShaderReflection().GetVariable(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetVariable(name);
 
         if (var.has_value() && var.value().type == ShaderReflection::VariableType::Mat4)
         {
@@ -80,7 +81,7 @@ namespace kbs
 
     void kbs::Material::SetBuffer(const std::string& name, ptr<RenderBuffer> buffer)
     {
-        auto var = m_Shader->GetShaderReflection().GetBuffer(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetBuffer(name);
 
         if (var.has_value() && var.value().set == (uint32_t)ShaderSetUsage::perMaterial)
         {
@@ -90,7 +91,7 @@ namespace kbs
 
     void kbs::Material::SetTexture(const std::string& name, ptr<Texture> texture)
     {
-        auto var = m_Shader->GetShaderReflection().GetTexture(name);
+        auto var = GetShaderByID()->GetShaderReflection().GetTexture(name);
 
         if (var.has_value() && var.value().set == (uint32_t)ShaderSetUsage::perMaterial)
         {
@@ -100,7 +101,7 @@ namespace kbs
 
     kbs::ptr<kbs::GraphicsShader> kbs::Material::GetShader()
     {
-        return m_Shader;
+        return GetShaderByID();
     }
 
     kbs::ptr<kbs::RenderBuffer> kbs::Material::GetBuffer()
@@ -117,7 +118,7 @@ namespace kbs
 
             if (m_MaterialBuffer != nullptr)
             {
-                write.BufferWrite(set, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, m_MaterialBuffer->GetBuffer()->GetBuffer(), 0, m_Shader->GetShaderReflection().GetVariableBufferSize());
+                write.BufferWrite(set, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, m_MaterialBuffer->GetBuffer()->GetBuffer(), 0,GetShaderByID()->GetShaderReflection().GetVariableBufferSize());
             }
 
             for (auto& buf : m_BufferBindings)
@@ -139,9 +140,17 @@ namespace kbs
 
             for (auto& tex : m_TextureBindings)
             {
-                // currently only combined image sampler is supported
-                write.ImageWrite(set, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, tex.info.set, tex.tex->GetSampler(),
-                    tex.tex->GetMainView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                VkDescriptorType type;
+                switch (tex.info.type)
+                {
+                case ShaderReflection::TextureType::CombinedImageSampler:
+                    type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                    break;
+                case ShaderReflection::TextureType::StorageImage:
+                    type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                    break;
+                }
+                write.ImageWrite(set, type, tex.info.binding, tex.tex->GetSampler(), tex.tex->GetMainView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             }
 
             write.Emit(ctx->GetDevice());
@@ -160,7 +169,17 @@ namespace kbs
 
     RenderPassFlags Material::GetRenderPassFlags()
     {
-        return m_Shader->GetRenderPassFlags();
+        return GetShaderByID()->GetRenderPassFlags();
+    }
+
+    ptr<GraphicsShader> Material::GetShaderByID()
+    {
+        ptr<ShaderManager> shaderManager = Singleton::GetInstance<AssetManager>()->GetShaderManager();
+        auto shader = shaderManager->Get(m_ShaderID);
+        KBS_ASSERT(shader.has_value(), "shader id passed to material must be valid");
+        KBS_ASSERT(shader.value()->IsGraphicsShader(), "shader passed to material must be a graphics shader");
+
+        return std::dynamic_pointer_cast<GraphicsShader>(shader.value());
     }
 
     View<ptr<Material>> kbs::MaterialManager::GetMaterials()
@@ -179,7 +198,7 @@ namespace kbs
 
     kbs::MaterialID kbs::MaterialManager::CreateMaterial(ptr<GraphicsShader> shader, ptr<RenderBuffer> buffer, const std::string& name)
     {
-        auto mat = std::make_shared<Material>(UUID::GenerateUncollidedID(m_MaterialIDTable), name, shader, buffer);
+        auto mat = std::make_shared<Material>(UUID::GenerateUncollidedID(m_MaterialIDTable), name, shader->GetShaderID(), buffer);
 
         m_MaterialIDTable[mat->GetID()] = mat;
         m_Materials.push_back(mat);
@@ -190,10 +209,88 @@ namespace kbs
     MaterialID MaterialManager::CreateMaterial(ptr<GraphicsShader> shader, RenderAPI& api, const std::string& name)
     {
         uint32_t materialBufferSize = shader->GetShaderReflection().GetVariableBufferSize();
-        ptr<RenderBuffer> buffer = api.CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, materialBufferSize, GVK_HOST_WRITE_SEQUENTIAL);
+        ptr<RenderBuffer> buffer = nullptr;
+        if (materialBufferSize != 0)
+        {
+            buffer = api.CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, materialBufferSize, GVK_HOST_WRITE_SEQUENTIAL);
+        }
 
         return CreateMaterial(shader, buffer, name);
     }
 
+    opt<ptr<RTMaterial>> MaterialManager::GetRTMaterialByID(const RTMaterialID& id)
+    {
+        if (m_RTMaterialIDTable.count(id))
+        {
+            return m_RTMaterialIDTable[id];
+        }
+        return std::nullopt;
+    }
+
+    RTMaterialID MaterialManager::CreateRTMaterial(const std::string& name)
+    {
+        RTMaterialID matID = UUID::GenerateUncollidedID(m_RTMaterialIDTable);
+        ptr<RTMaterial> rtMaterial = std::make_shared<RTMaterial>(matID, name);
+
+        m_RTMaterialIDTable[matID] = rtMaterial;
+        return matID;
+    }
+
+
+    RTMaterial::RTMaterial(RTMaterialID matID, const std::string& name)
+        :m_RTMaterialID(matID),m_Name(name)
+    {
+
+    }
+
+    void RTMaterial::SetDiffuseTexture(TextureID diffuseTexture)
+    {
+        m_DiffuseTexture = diffuseTexture;
+    }
+
+    TextureID RTMaterial::GetDiffuseTexture()
+    {
+        return m_DiffuseTexture;
+    }
+
+    void RTMaterial::SetMetallicTexture(TextureID metallicTexture)
+    {
+        m_MetallicTexture = metallicTexture;
+    }
+
+    TextureID RTMaterial::GetMetallicTexture()
+    {
+        return m_MetallicTexture;
+    }
+
+    void RTMaterial::SetEmissiveTexture(TextureID emissiveTexture)
+    {
+        m_EmissiveTexture = emissiveTexture;
+    }
+
+    TextureID RTMaterial::GetEmissiveTexture()
+    {
+        return m_EmissiveTexture;
+    }
+
+	void RTMaterial::SetNormalTexture(TextureID normalTexture)
+	{
+        m_NormalTexture = normalTexture;
+	}
+
+	kbs::TextureID RTMaterial::GetNormalTexture()
+	{
+        return m_NormalTexture;
+	}
+
+	kbs::PBRMaterialParameter& RTMaterial::GetMaterialParameter()
+	{
+        return m_PBRParameter;
+	}
+
+	std::string RTMaterial::GetName()
+    {
+        return m_Name;
+    }
 
 }

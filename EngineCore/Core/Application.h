@@ -26,13 +26,15 @@ namespace kbs
 		template<typename T, typename...Args>
 		void BoardcastEvent(Args...args)
 		{
-			m_EventManager->BoardcastEvent(T(args...));
+			EventManager* eventManager = Singleton::GetInstance<EventManager>();
+			eventManager->BoardcastEvent(T(args...));
 		}
 
 		template<typename T>
 		void AddListener(std::function<void(const T&)> eventListener)
 		{
-			m_EventManager->AddListener(eventListener);
+			EventManager* eventManager = Singleton::GetInstance<EventManager>();
+			eventManager->AddListener(eventListener);
 		}
 
 		virtual void OnUpdate();
@@ -43,7 +45,7 @@ namespace kbs
 
 
 	protected:
-		ptr<EventManager>	m_EventManager;
+		// ptr<EventManager>	m_EventManager;
 		ptr<LayerManager>	m_LayerManager;
 		ptr<Window>			m_Window;
 		ptr<Timer>			m_Timer;

@@ -8,7 +8,8 @@ namespace kbs
 	{
 		RenderPass_Opaque = 1,
 		RenderPass_Transparent = 2,
-		RenderPass_Shadow = 4
+		RenderPass_Shadow = 4,
+		RenderPass_MaxPreservedBit = 8
 	};
 	using RenderPassFlags = uint64_t;
 

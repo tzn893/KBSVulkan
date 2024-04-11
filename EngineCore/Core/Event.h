@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <functional>
 
+#include "Core/Singleton.h"
 #include "gvk_window.h"
 
 namespace kbs
@@ -35,8 +36,8 @@ namespace kbs
 
 #define EVENT_CLASS_NAME(eve) static const char* GetName() {return #eve;}
 
-#define EVENT_CLASS_TYPE(type) static EventType GetStaticType() { return EventType::type; }\
-								virtual EventType GetEventType() const override { return GetStaticType(); }\
+#define EVENT_CLASS_TYPE(type) static uint64_t GetStaticType() { return (uint64_t)type; }\
+								virtual uint64_t GetEventType() const override { return GetStaticType(); }\
 
 #define EVENT_CLASS_CATEGORY(category) virtual int GetCategoryFlags() const override { return category; }
 
@@ -50,7 +51,7 @@ namespace kbs
 
 		bool Handled = false;
 
-		virtual EventType GetEventType() const = 0;
+		virtual uint64_t GetEventType() const = 0;
 		static const char* GetName() { return "Undefined"; };
 		virtual int GetCategoryFlags() const = 0;
 		virtual std::string ToString() const { return GetName(); }
@@ -61,7 +62,7 @@ namespace kbs
 		}
 	};
 
-	class EventManager
+	class EventManager : public Is_Singleton
 	{
 	public:
 		using EventCallback = std::function<void(const Event&)>;
@@ -132,7 +133,7 @@ namespace kbs
 		}
 
 		EVENT_CLASS_NAME(KeyHold)
-		EVENT_CLASS_TYPE(KeyHold)
+		EVENT_CLASS_TYPE(EventType::KeyHold)
 	};
 
 	class KeyReleasedEvent : public KeyEvent
@@ -149,7 +150,7 @@ namespace kbs
 		}
 
 		EVENT_CLASS_NAME(KeyReleased)
-		EVENT_CLASS_TYPE(KeyReleased)
+		EVENT_CLASS_TYPE(EventType::KeyReleased)
 	};
 
 	class KeyDownEvent : public KeyEvent
@@ -166,7 +167,7 @@ namespace kbs
 		}
 
 		EVENT_CLASS_NAME(KeyDown)
-		EVENT_CLASS_TYPE(KeyDown)
+		EVENT_CLASS_TYPE(EventType::KeyDown)
 	};
 
 	class MouseMovedEvent : public Event
@@ -185,7 +186,7 @@ namespace kbs
 			return ss.str();
 		}
 
-		EVENT_CLASS(MouseMoved, MouseMoved, EventCategoryMouse | EventCategoryInput)
+		EVENT_CLASS(MouseMoved, EventType::MouseMoved, EventCategoryMouse | EventCategoryInput)
 
 	private:
 		float m_MouseX, m_MouseY;
@@ -217,7 +218,7 @@ namespace kbs
 			return ss.str();
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonDown)
+		EVENT_CLASS_TYPE(EventType::MouseButtonDown)
 		EVENT_CLASS_NAME(MouseButtonDown)
 	};
 
@@ -234,7 +235,7 @@ namespace kbs
 			return ss.str();
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonReleased)
+		EVENT_CLASS_TYPE(EventType::MouseButtonReleased)
 		EVENT_CLASS_NAME(MouseButtonReleased)
 	};
 
@@ -254,7 +255,7 @@ namespace kbs
 			return ss.str();
 		}
 
-		EVENT_CLASS(WindowResize,WindowResize, EventCategoryApplication)
+		EVENT_CLASS(WindowResize, EventType::WindowResize, EventCategoryApplication)
 	private:
 		unsigned int m_Width, m_Height;
 	};
@@ -264,7 +265,7 @@ namespace kbs
 	public:
 		WindowCloseEvent() = default;
 
-		EVENT_CLASS(WindowClose,WindowClose, EventCategoryApplication)
+		EVENT_CLASS(WindowClose, EventType::WindowClose, EventCategoryApplication)
 	};
 
 	class AppTickEvent : public Event
@@ -272,7 +273,7 @@ namespace kbs
 	public:
 		AppTickEvent() = default;
 
-		EVENT_CLASS(AppTick, AppTick, EventCategoryApplication)
+		EVENT_CLASS(AppTick, EventType::AppTick, EventCategoryApplication)
 	};
 
 	class AppUpdateEvent : public Event
@@ -280,7 +281,7 @@ namespace kbs
 	public:
 		AppUpdateEvent() = default;
 
-		EVENT_CLASS(AppUpdate, AppUpdate, EventCategoryApplication)
+		EVENT_CLASS(AppUpdate, EventType::AppUpdate, EventCategoryApplication)
 	};
 
 	class AppRenderEvent : public Event
@@ -288,6 +289,6 @@ namespace kbs
 	public:
 		AppRenderEvent() = default;
 
-		EVENT_CLASS(AppRender,AppRender, EventCategoryApplication)
+		EVENT_CLASS(AppRender, EventType::AppRender, EventCategoryApplication)
 	};
 }

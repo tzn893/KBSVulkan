@@ -21,6 +21,11 @@ namespace kbs
 
 	};
 
+	struct CameraFrustrum
+	{
+		vec4 plane[6];
+	};
+
 	class RenderCamera
 	{
 	public:
@@ -28,8 +33,15 @@ namespace kbs
 		RenderCamera(Entity e);
 		RenderCamera(const RenderCamera& camera) = default;
 		
-		CameraUBO	GetCameraUBO();
-		Transform&	GetCameraTransform();
+		CameraUBO		GetCameraUBO();
+		Transform&		GetCameraTransform();
+		
+		CameraFrustrum	GetFrustrum()
+		{
+			return GetFrustrum(0, 1, 0, 1, 0, 1);
+		}
+		CameraFrustrum  GetFrustrum(float u_tile, float u_tile_1, float v_tile, float v_tile_1, float d, float d_1);
+
 
 	private:
 		CameraComponent     m_Camera;

@@ -34,4 +34,10 @@ namespace kbs {
 	{
 		return UUID{ 0xffffffffffffffff };
 	}
+
+	bool UUID::IsInvalid()
+	{
+		return 0xffffffffffffffff == m_UUID;
+	}
+
 }

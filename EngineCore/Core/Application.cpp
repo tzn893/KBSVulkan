@@ -57,14 +57,16 @@ KBS_API void kbs::Application::OnUpdate()
 
 KBS_API int kbs::Application::Run()
 {
-	m_EventManager = std::make_shared<kbs::EventManager>();
+	//m_EventManager = std::make_shared<kbs::EventManager>();
 	m_LayerManager = std::make_shared<kbs::LayerManager>();
 	m_Window = std::make_shared<kbs::Window>(m_WindowWidth, m_WindowHeight, this, m_Title.c_str());
 
 	m_LayerManager->ListenToEvents<KeyDownEvent, KeyHoldEvent, KeyReleasedEvent, MouseButtonEvent, MouseButtonDownEvent,
-		MouseButtonReleasedEvent, MouseMovedEvent, WindowResizeEvent, WindowCloseEvent>(m_EventManager.get());
+		MouseButtonReleasedEvent, MouseMovedEvent, WindowResizeEvent, WindowCloseEvent>(Singleton::GetInstance<EventManager>());
 
 	BeforeRun();
+
+	kbs::Singleton::GetInstance<kbs::EventManager>()->BoardcastEvent(kbs::WindowResizeEvent(m_Window->GetWidth(), m_Window->GetHeight()));
 
 	while (true)
 	{

@@ -1,0 +1,105 @@
+#pragma kbs_shader
+#pragma kbs_compute_begin
+
+#version 450
+#include "surfelCommon.glsl"
+#include "frustrum.glsl"
+#include "random.glsl"
+
+#extension GL_EXT_debug_printf : enable
+
+layout(set = 0, binding = 0) buffer _SurfelAccelerationStructure
+{
+#ifndef SURFEL_SPARSE_OPTIMIZED
+    SurfelAccelerationStructure accelStruct;
+#else
+    SurfelAccelerationStructureV2 accelStruct;
+#endif
+};
+
+layout(set = 0, binding = 1) buffer _SurfelBuffer
+{
+    SurfelBuffer surfels;
+};
+
+layout(set = 1, binding = 0) uniform _SurfelGlobalUniform
+{
+    SurfelGlobalUniform globalUniform;
+};
+
+layout(set = 0, binding = 2) buffer _SurfelIndexBuffer
+{
+    SurfelIndexBuffer surfelIdxBuffer;
+};
+
+layout (local_size_x = 64,local_size_y = 1, local_size_z = 1) in;
+
+shared int surfelIndexStart;
+shared int surfelCount;
+shared int surfelIndices[256];
+
+void main()
+{
+    // if(gl_GlobalInvocationID.x == 0 && gl_GlobalInvocationID.y == 0 && gl_GlobalInvocationID.z == 0)
+    // {
+    //     debugPrintfEXT("live surfel count %d", surfelIdxBuffer.liveSurfelCount);
+    // }
+
+    ivec3 gridCoord = ivec3(gl_WorkGroupID.xyz);
+    int cellIdx = gridCoord.x + gridCoord.y * SURFEL_GRID_COUNT + gridCoord.z * SURFEL_GRID_COUNT * SURFEL_GRID_COUNT;
+
+    #ifdef SURFEL_SPARSE_OPTIMIZED
+        if(accelStruct.cellDirtyFlag[cellIdx] == 0)
+        {
+            return;
+        } 
+    #endif
+
+    surfelCount = 0;
+    barrier();
+
+
+    int localThreadX = int(gl_LocalInvocationID.x);
+    for(int i = localThreadX; i < surfelIdxBuffer.liveSurfelCount; i += 64)
+    {
+        int surfelIdx = surfelIdxBuffer.liveSurfelIdx[i];
+        SurfelInfo surfel = surfels.surfels[surfelIdx];
+        if(GridSurfelCellIntersection(globalUniform, cellIdx, surfel) != 0)
+        {
+            int surfelCellIdx = atomicAdd(surfelCount, 1);
+            if(surfelCellIdx < 256)
+            {
+                surfelIndices[surfelCellIdx] = surfelIdx;
+            }
+        }
+    }
+    barrier();
+
+    int trueSurfelCount = min(surfelCount, 256);
+    if(localThreadX == 0)
+    {
+        /*
+         debugPrintfEXT("cell idx %d", cellIdx);
+        if(trueSurfelCount != 0)
+        {
+            debugPrintfEXT("surfel count %d, cell grid coord %d,%d,%d", trueSurfelCount, gridCoord.x, gridCoord.y, gridCoord.z);   
+        }
+        */
+
+        int indexStart = atomicAdd(accelStruct.cellIndexCount, trueSurfelCount);
+
+        surfelIndexStart = indexStart;
+        accelStruct.cellIndexStartCount[cellIdx] = ivec2(indexStart, trueSurfelCount);
+    }
+    barrier();
+
+    for(int i = localThreadX;i < trueSurfelCount; i += 64)
+    {
+        accelStruct.asIndexPool[i + surfelIndexStart] = surfelIndices[i];
+    }
+
+    
+}
+
+
+#pragma kbs_compute_end

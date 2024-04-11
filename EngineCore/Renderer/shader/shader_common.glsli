@@ -5,6 +5,7 @@
 #define perMaterial set = 1
 #define perCamera set = 2
 #define perDraw set = 3
+#define perPass set = perDraw
 
 struct VertexOutput
 {

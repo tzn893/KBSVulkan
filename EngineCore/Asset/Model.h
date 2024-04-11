@@ -17,14 +17,40 @@ namespace kbs
     class ModelMaterialSet
     {
     public:
-        ModelMaterialSet(const std::vector<MaterialID>& materials, ShaderID targetShader) : m_Materials(materials),
-            m_TargetShader(targetShader) {}
+        ModelMaterialSet(const std::vector<MaterialID>& materials, ShaderID targetShader, std::vector<RenderPassFlags> initialFlags) : m_Materials(materials),
+            m_TargetShader(targetShader),m_MaterialRenderPassFlag(initialFlags) {}
 
         MaterialID GetModelMaterial(uint32_t idx);
+        
+        void            SetMaterialRenderPassFlag(RenderPassFlags flags, int32_t idx = -1);
+        RenderPassFlags GetMaterialRenderPassFlag(uint32_t idx);
+        void            AddMaterialRenderPassFlag(RenderPassFlags flags, int32_t idx = -1);
+
 
     private:
-        std::vector<MaterialID> m_Materials;
+        std::vector<MaterialID>      m_Materials;
+        std::vector<RenderPassFlags> m_MaterialRenderPassFlag;
         ShaderID                m_TargetShader;
+    };
+
+    struct ModelInstantiateOption
+    {
+        enum Flag
+        {
+            RayTracingSupport = 0x1,
+        };
+        uint64_t flags = 0;
+    };
+
+    struct ModelLoadOption
+    {
+        enum Flag
+        {
+            RayTracingSupport = 0x1,
+            SkipOpaque = 0x2,
+            SkipTransparent = 0x4
+        };
+        uint64_t flags = 0;
     };
 
     class Model
@@ -67,11 +93,13 @@ namespace kbs
             // quat rotation;
         };
 
-        Model(std::vector<TextureID>      textureSet, std::vector<MaterialSet>    materialSet, std::vector<Primitive>      primitiveSet, std::vector<Model::Mesh>           meshSet, const std::string& name);
+        Model(std::vector<TextureID>      textureSet, std::vector<MaterialSet>    materialSet, std::vector<Primitive>      primitiveSet, std::vector<Model::Mesh>           meshSet, const std::string& name,
+            ModelLoadOption option);
         
         opt<ptr<ModelMaterialSet>> CreateMaterialSetForModel(ShaderID targetShader, RenderAPI& api);
 
-        Entity Instantiate(ptr<Scene> scene, std::string name, ptr<ModelMaterialSet> materialSet,const TransformComponent& modelTrans);
+        Entity Instantiate(ptr<Scene> scene, std::string name, View<ptr<ModelMaterialSet>> materialSet,const TransformComponent& modelTrans, ModelInstantiateOption options);
+        Entity Instantiate(ptr<Scene> scene, std::string name, ptr<ModelMaterialSet> materialSet, const TransformComponent& modelTrans, ModelInstantiateOption options = ModelInstantiateOption{});
 
     private:
         std::vector<TextureID>      m_TextureSet;
@@ -80,6 +108,8 @@ namespace kbs
         std::vector<Mesh>           m_MeshSet;
         ModelID                     m_ModelID;
         std::string                 m_Name;
+
+        bool                        m_SupportRayTracing : 1;
     };
 
 
@@ -88,7 +118,7 @@ namespace kbs
     public:
         ModelManager() = default;
 
-        opt<ModelID> LoadFromGLTF(const std::string& path, RenderAPI& api);
+        opt<ModelID> LoadFromGLTF(const std::string& path, RenderAPI& api, ModelLoadOption option);
 
         opt<ptr<Model>> GetModel(ModelID model);
         opt<ModelID> GetModelByPath(const std::string& path);

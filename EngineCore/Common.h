@@ -19,6 +19,9 @@ namespace kbs
 	template<typename T>
 	using opt = std::optional<T>;
 
+	template<typename T>
+	using ref = T*;
+
 	template<typename ...Args>
 	using tpl = std::tuple<Args...>;
 

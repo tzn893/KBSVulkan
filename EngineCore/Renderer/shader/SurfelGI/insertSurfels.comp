@@ -1,0 +1,149 @@
+#pragma kbs_shader
+#pragma kbs_compute_begin
+
+#version 450
+
+#extension GL_EXT_debug_printf : enable
+#include "surfelCommon.glsl"
+
+layout(set = 0, binding = 0) buffer _SurfelBuffer
+{
+    SurfelBuffer surfels;
+};
+
+layout(set = 0, binding = 1) buffer _SurfelIndexBuffer
+{
+    SurfelIndexBuffer surfelIdxBuffer;
+};
+
+layout(set = 0, binding = 2) buffer _SurfelAccelerationStructure
+{
+    #ifndef SURFEL_SPARSE_OPTIMIZED
+        SurfelAccelerationStructure accelStruct;
+    #else
+        SurfelAccelerationStructureV2 accelStruct;
+    #endif
+};
+
+layout(set = 1, binding = 0) uniform _SurfelGlobalUniform
+{
+    SurfelGlobalUniform globalUniform;
+};
+
+layout(set = 2, binding = 0) uniform sampler2D gDepth;
+layout(set = 2, binding = 1) uniform sampler2D gNormal;
+
+layout (local_size_x = 16,local_size_y = 16, local_size_z = 1) in;
+
+shared int  lowestThreadCenterDistance;
+shared vec3 lowestThreadPosition;
+shared vec3 lowestThreadNormal;
+
+void main()
+{
+    lowestThreadCenterDistance = 65536;
+    barrier();
+
+    int   localThreadCenterDistance = abs(int(gl_LocalInvocationID.x) - 7) + abs(int(gl_LocalInvocationID.y) - 7);
+
+    if(globalUniform.currentFrame == 0)
+    {
+        if(gl_WorkGroupID.x % 4 != 0 || gl_WorkGroupID.y % 4 != 0)
+        {
+            return;
+        }
+    }  
+
+    ivec2 pixelIdx = ivec2(gl_GlobalInvocationID.xy);
+    vec2  pixelCenter = vec2(pixelIdx) + vec2(0.5);
+    vec2  inUV        = pixelCenter * globalUniform.resolution.zw;
+
+    float depth = texture(gDepth, inUV).r;
+    vec3  normal = normalize(texture(gNormal, inUV).xyz * 2.0 - 1.0);
+
+    vec3  ndc = vec3(inUV * 2.0 - 1.0, depth);
+    vec4  clip = vec4(ndc, 1.0);
+
+    vec4 view = globalUniform.projInverse * clip;
+
+    if(view.z / view.w >= 200.0) return;
+
+    vec4 pixelPosition = globalUniform.viewInverse * view;
+    pixelPosition /= pixelPosition.w;
+
+    int cellIdx = GetGridCellIdx(globalUniform, pixelPosition.xyz);
+    ivec2 cellIndexStartCount = accelStruct.cellIndexStartCount[cellIdx];
+    
+    int surfelCoverCount = 0;
+    float surfelCoverRatio = 0.0;
+
+    for(int i = 0;i < cellIndexStartCount.y; i++)
+    {
+        int surfelIdx = accelStruct.asIndexPool[i + cellIndexStartCount.x];
+        SurfelInfo surfel = surfels.surfels[surfelIdx];
+
+        float surfelDistance = distance(surfel.position, pixelPosition.xyz); 
+        if(surfel.radius > surfelDistance)
+        {
+            surfelCoverCount += 1;
+            surfelCoverRatio += coverRatio(surfel, pixelPosition.xyz, normal);
+        }
+    }
+
+    localThreadCenterDistance += surfelCoverCount * 64;
+
+    // at least 1 surfels cover a pixel
+    if(surfelCoverCount < 4 && surfelCoverRatio < 0.8)
+    {
+        int lastLowestThreadCenterDistance = atomicMin(lowestThreadCenterDistance, localThreadCenterDistance);
+        if(lowestThreadCenterDistance < lastLowestThreadCenterDistance)
+        {
+            lowestThreadPosition = pixelPosition.xyz;
+            lowestThreadNormal = normal;
+        }
+    }
+
+    barrier();
+
+    if(gl_LocalInvocationID.x != 0 || gl_LocalInvocationID.y != 0 || lowestThreadCenterDistance >= 65536)
+    {
+        return;
+    }
+
+    if(globalUniform.currentFrame == 0)
+    {
+        ivec2 workGroupID = ivec2(gl_WorkGroupID.xy);
+        if(workGroupID.x % 6 != 0 || workGroupID.y % 6 != 0)
+        {
+            return;
+        }
+    }
+
+    // allocate a new surfel and insert into acceleration structure
+    SurfelInfo newSurfel;
+    // prevent divide by 0
+    newSurfel.radianceWeight = vec4(0,0,0,1e-6);
+    newSurfel.position = lowestThreadPosition;
+    newSurfel.normal = lowestThreadNormal;
+    newSurfel.lastContributionFrame = globalUniform.currentFrame;
+    newSurfel.radius = globalUniform.surfelRadius;
+
+    int avaliableSurfelStackIdx = atomicAdd(surfelIdxBuffer.avaliableSurfelCount, -1) - 1;
+    //debugPrintfEXT("lowestThreadCenterDistance : %d", lowestThreadCenterDistance);
+    
+    if(avaliableSurfelStackIdx >= 0)
+    {
+        // debugPrintfEXT("insert position %f,%f,%f", lowestThreadPosition.x, lowestThreadPosition.y, lowestThreadPosition.z);
+
+        int allocatedSurfelIdx = surfelIdxBuffer.avaliableSurfelIdx[avaliableSurfelStackIdx];
+        surfels.surfels[allocatedSurfelIdx] = newSurfel;
+        int liveSurfelNewIdx = atomicAdd(surfelIdxBuffer.liveSurfelCount, 1);
+        surfelIdxBuffer.liveSurfelIdx[liveSurfelNewIdx] = allocatedSurfelIdx;
+    }
+    else
+    {
+        atomicMax(surfelIdxBuffer.avaliableSurfelCount, 0);
+    }
+}
+
+#pragma kbs_compute_end

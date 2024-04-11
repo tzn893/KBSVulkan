@@ -186,6 +186,8 @@ void RotatingCubeApplication::BeforeRun()
 	renderer->Initialize(m_Window, info);
 	
 	RenderAPI api = renderer->GetAPI();
+
+	Singleton::GetInstance<AssetManager>()->GetTextureManager()->LoadDefaultTextures(api);
 	ptr<RenderBuffer> cubeMeshBuffer = api.CreateBuffer(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, sizeof(cube), GVK_HOST_WRITE_SEQUENTIAL);
 	cubeMeshBuffer->GetBuffer()->Write(cube, 0, sizeof(cube));
 
@@ -202,7 +204,7 @@ void RotatingCubeApplication::BeforeRun()
 		ptr<GraphicsShader> shader = std::dynamic_pointer_cast<GraphicsShader>(Singleton::GetInstance<AssetManager>()->GetShaderManager()->Load("shade.glsl").value());
 
 		MaterialID materialId = Singleton::GetInstance<AssetManager>()->GetMaterialManager()->CreateMaterial(shader, api, "m1");
-		render.targetMaterial = materialId;
+		render.AddRenderablePass(materialId, 0);
 
 		TransformComponent comp(kbs::vec3(0, 0, 8), kbs::math::axisAngle(rotateAxis, angle), kbs::vec3(2, 2, 2));
 		comp.parent = scene->GetRootID();

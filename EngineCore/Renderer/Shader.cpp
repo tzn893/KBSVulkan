@@ -18,6 +18,8 @@ namespace kbs
 
 	void ShaderManager::Initialize(ptr<gvk::Context> ctx)
 	{
+		GetShaderFileManager()->AddSearchPath(KBS_ROOT_DIRECTORY"/Renderer/shader/");
+
 		const char* shaderDirectorys[] = { KBS_ROOT_DIRECTORY"/Renderer/Shader/" };
 		auto standardVertex = ctx->CompileShader(
 			"standard_vertex.vert", gvk::ShaderMacros(),
@@ -25,15 +27,24 @@ namespace kbs
 		KBS_ASSERT(standardVertex.has_value(), "standard vertex shader must be compiled");
 		m_StandardVertexShader = standardVertex.value();
 
-		GetShaderFileManager()->AddSearchPath(KBS_ROOT_DIRECTORY"/Renderer/shader");
+		//GetShaderFileManager()->AddSearchPath(KBS_ROOT_DIRECTORY"/Renderer/shader");
 
 		m_Context = ctx;
 	}
 
 
+	kbs::ShaderMacroSet& ShaderManager::GetMacroSet()
+	{
+		return m_Macros;
+	}
+
 	opt<ptr<Shader>> kbs::ShaderManager::Load(const std::string& _filePath)
 	{
-		//if (!Exists(filePath))
+		if (auto var = GetByPath(_filePath);var.has_value())
+		{
+			return var.value();
+		}
+
 		ShaderInfo  preParsedInfo;
 		std::string absolutePath = _filePath;
 		{
@@ -132,7 +143,7 @@ namespace kbs
 				}
 			case ShaderType::Compute:
 			{
-					auto comp = CompileGvkShader(preParsedInfo.vertexShader, filePath, "comp", workingDirectoryCStr, msg);
+					auto comp = CompileGvkShader(preParsedInfo.computeShader, filePath, "comp", workingDirectoryCStr, msg);
 					if (!comp.has_value())
 					{
 						KBS_WARN("fail to compile compute shader in {} reason {}", filePath.c_str(), msg.c_str());
@@ -140,7 +151,47 @@ namespace kbs
 					}
 					loadedShader = std::make_shared<ComputeShader>(comp.value(), filePath, this, shaderID);
 					break;
+			}
+			case ShaderType::RayTracing:
+			{
+				gvk::RayTracingPieplineCreateInfo rtPipeline;
+				auto rayGen = CompileGvkShader(preParsedInfo.rayGenShader, filePath, "rgen", workingDirectoryCStr, msg);
+				rtPipeline.AddRayGenerationShader(rayGen.value());
+				rtPipeline.SetMaxRecursiveDepth(preParsedInfo.rayTracingMaxRecursiveDepth);
+
+				int counter = 0;
+				for (auto& miss : preParsedInfo.rayMissShader)
+				{
+					auto missShader = CompileGvkShader(miss, filePath + std::to_string(counter++), "rmiss", workingDirectoryCStr, msg);
+					rtPipeline.AddRayMissShader(missShader.value());
 				}
+
+				counter = 0;
+				for (auto& hit : preParsedInfo.hitGroupShader) 
+				{
+					ptr<gvk::Shader> chit, anyHit, intersect;
+					if (!hit.cloestHitShader.empty())
+					{
+						auto hitShader = CompileGvkShader(hit.cloestHitShader, filePath + std::to_string(counter++), "rchit", workingDirectoryCStr, msg);
+						chit = hitShader.value();
+					}
+					if (!hit.anyHitShader.empty())
+					{
+						auto hitShader = CompileGvkShader(hit.anyHitShader, filePath + std::to_string(counter++), "rahit", workingDirectoryCStr, msg);
+						anyHit = hitShader.value();
+					}
+					if (!hit.intersectionShader.empty())
+					{
+						auto hitShader = CompileGvkShader(hit.intersectionShader, filePath + std::to_string(counter++), "rinst", workingDirectoryCStr, msg);
+						intersect = hitShader.value();
+					}
+					rtPipeline.AddRayIntersectionShader(intersect, anyHit, chit);
+				}
+
+				loadedShader = std::make_shared<RayTracingShader>(rtPipeline, filePath, this, shaderID);
+				break;
+
+			}
 		}
 
 		if (!loadedShader->GenerateReflection())
@@ -160,6 +211,16 @@ namespace kbs
 			return m_Shaders[id];
 		}
 		return  std::nullopt;
+	}
+
+	opt<ptr<Shader>> ShaderManager::GetByPath(const std::string& filePath)
+	{
+		if (Exists(filePath))
+		{
+			std::string fullPath = GetShaderFileManager()->FindAbsolutePath(filePath).value();
+			return m_Shaders[m_ShaderPathTable[fullPath]];
+		}
+		return std::nullopt;
 	}
 
 	bool ShaderManager::Exists(const std::string& filePath)
@@ -224,9 +285,16 @@ namespace kbs
 		ouf.write(preParsedShaderContent.c_str(), preParsedShaderContent.size());
 		ouf.close();
 
-		auto res = m_Context->CompileShader(shaderFileName.c_str(), gvk::ShaderMacros(),
+		gvk::ShaderMacros shaderMacros = m_Macros.GetShaderMacros();
+
+		auto res = m_Context->CompileShader(shaderFileName.c_str(), shaderMacros,
 			workingDirectories.data(), workingDirectories.size(), workingDirectories.data(), workingDirectories.size(), &msg);
 
+		if (res.has_value())
+		{
+			remove(shaderFileName.c_str());
+			remove((shaderFileName + ".spv").c_str());
+		}
 		return res;
 	}
 
@@ -263,6 +331,11 @@ namespace kbs
 	bool Shader::IsComputeShader()
 	{
 		return m_ShaderType == ShaderType::Compute;
+	}
+
+	bool Shader::IsRayTracingShader()
+	{
+		return m_ShaderType == ShaderType::RayTracing;
 	}
 
 	void SurfaceShader::OnPipelineStateCreate(GvkGraphicsPipelineCreateInfo& info)
@@ -325,7 +398,6 @@ namespace kbs
 
 		return true;
 	}
-
 
 	void MeshShader::OnPipelineStateCreate(GvkGraphicsPipelineCreateInfo& info)
 	{
@@ -419,6 +491,22 @@ namespace kbs
 		SPV_REFLECT_TYPE_FLAG_EXTERNAL_IMAGE | SPV_REFLECT_TYPE_FLAG_EXTERNAL_ACCELERATION_STRUCTURE
 		| SPV_REFLECT_TYPE_FLAG_EXTERNAL_BLOCK | SPV_REFLECT_TYPE_FLAG_EXTERNAL_MASK | SPV_REFLECT_TYPE_FLAG_STRUCT
 		| SPV_REFLECT_TYPE_FLAG_ARRAY;
+
+	static opt<std::string> GetBindingBlockName(SpvReflectDescriptorBinding* binding)
+	{
+		if (strlen(binding->name) != 0)
+		{
+			return binding->name;
+		}
+
+		if (binding->type_description->op != SpvOpTypeStruct ||
+			binding->block.member_count != 1)
+		{
+			return std::nullopt;
+		}
+
+		return binding->block.members[0].name;
+	}
 
 	bool ShaderReflection::GraphicsReflectionFromBindings(std::vector<SpvReflectDescriptorBinding*>& bindings, std::string& msg)
 	{
@@ -582,8 +670,19 @@ namespace kbs
 				info.set = b->set;
 				info.depth = b->image.depth;
 				info.dim = b->image.dim;
+				info.type = TextureType::CombinedImageSampler;
 
-				m_TextureInfos[b->name] = info;
+				std::string name;
+				if (auto var = GetBindingBlockName(b); var.has_value())
+				{
+					name = var.value();
+				}
+				else
+				{
+					return false;
+				}
+
+				m_TextureInfos[name] = info;
 			}
 			else if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER
 				|| b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER)
@@ -593,7 +692,17 @@ namespace kbs
 				info.set = b->set;
 				info.type = b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER ? BufferType::Uniform : BufferType::Storage;
 
-				m_BufferInfos[b->name] = info;
+				std::string name;
+				if (auto var = GetBindingBlockName(b); var.has_value())
+				{
+					name = var.value();
+				}
+				else
+				{
+					return false;
+				}
+
+				m_BufferInfos[name] = info;
 			}
 			else
 			{
@@ -610,24 +719,47 @@ namespace kbs
 		m_VariableBufferSize = 0;
 		for (auto& b : bindings)
 		{
-			if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+			if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+				|| b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE)
 			{
 				TextureInfo info;
 				info.binding = b->binding;
 				info.set = b->set;
 				info.depth = b->image.depth;
 				info.dim = b->image.dim;
+				info.type = b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ? 
+					TextureType::CombinedImageSampler : TextureType::StorageImage;
 
-				m_TextureInfos[b->name] = info;
+				std::string name;
+				if (auto var = GetBindingBlockName(b); var.has_value())
+				{
+					name = var.value();
+				}
+				else
+				{
+					return false;
+				}
+
+				m_TextureInfos[name] = info;
 			}
 			else if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER
 				|| b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-			{
-				BufferInfo info;
-				info.binding = b->binding;
-				info.set = b->set;
+			{ 
+				 BufferInfo info;
+				 info.binding = b->binding;
+				 info.set = b->set;
+				 info.type = b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER ? BufferType::Uniform : BufferType::Storage;
 
-				m_BufferInfos[b->name] = info;
+				 std::string name;
+				 if (auto var = GetBindingBlockName(b); var.has_value())
+				 {
+				 	name = var.value();
+				 }
+				 else
+				 {
+				 	 return false;
+				 }
+				  m_BufferInfos[name] = info;
 			}
 			else
 			{
@@ -639,6 +771,70 @@ namespace kbs
 		return true;
 	}
 
+
+	bool ShaderReflection::RayTracingReflectionFromBindings(std::vector<SpvReflectDescriptorBinding*>& bindings, std::string& msg)
+	{
+		for (auto& b : bindings)
+		{
+			if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+				|| b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+			{
+				TextureInfo info;
+				info.binding = b->binding;
+				info.set = b->set;
+				info.depth = b->image.depth;
+				info.dim = b->image.dim;
+				info.type = b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ?
+					TextureType::CombinedImageSampler : TextureType::StorageImage;
+
+				std::string name;
+				if (auto var = GetBindingBlockName(b); var.has_value())
+				{
+					name = var.value();
+				}
+				else
+				{
+					return false;
+				}
+
+				m_TextureInfos[name] = info;
+			}
+			else if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+				|| b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+			{
+				BufferInfo info;
+				info.binding = b->binding;
+				info.set = b->set;
+				info.type = b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER ? BufferType::Uniform : BufferType::Storage;
+
+				std::string name;
+				if (auto var = GetBindingBlockName(b); var.has_value())
+				{
+					name = var.value();
+				}
+				else
+				{
+					return false;
+				}
+				m_BufferInfos[name] = info;
+			}
+			else if (b->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR)
+			{
+				AccelerationStructureInfo info;
+				info.binding = b->binding;
+				info.set = b->set;
+
+				m_AccelStructInfos[b->name] = info;
+			}
+			else
+			{
+				msg = "currently binding at set " + std::to_string(b->set) + " binding " + std::to_string(b->binding) + " name " + b->name + " is not supported";
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	opt<ShaderReflection::VariableInfo> ShaderReflection::GetVariable(const std::string& name)
 	{
@@ -670,6 +866,15 @@ namespace kbs
 		return m_TextureInfos[name];
 	}
 	
+	kbs::opt<kbs::ShaderReflection::AccelerationStructureInfo> ShaderReflection::GetAS(const std::string& name)
+	{
+		if (!m_AccelStructInfos.count(name))
+		{
+			return std::nullopt;
+		}
+		return m_AccelStructInfos[name];
+	}
+
 	void ShaderReflection::IterateVariables(std::function<bool(const std::string&, VariableInfo&)> op)
 	{
 		for (auto& pair : m_VariableInfos)
@@ -701,4 +906,129 @@ namespace kbs
 			}
 		}
 	}
+
+	std::vector<uint32_t> ShaderReflection::GetOccupiedSetIndices()
+	{
+		std::vector<uint32_t> res;
+		auto insertNotRepeated = [&](uint32_t idx)
+		{
+			if (std::find(res.begin(), res.end(), idx) == res.end())
+			{
+				res.push_back(idx);
+			}
+		};
+
+		for (auto tex : m_TextureInfos)
+		{
+			insertNotRepeated(tex.second.set);
+		}
+		for (auto buf : m_BufferInfos)
+		{
+			insertNotRepeated(buf.second.set);
+		}
+		for (auto as : m_AccelStructInfos)
+		{
+			insertNotRepeated(as.second.set);
+		}
+		std::sort(res.begin(), res.end());
+		return res;
+	}
+
+	void ShaderMacroSet::Define(const char* def)
+	{
+		if (Find(def) == defs.size())
+		{
+			defs.push_back(def);
+			values.push_back("");
+		}
+	}
+
+	void ShaderMacroSet::Define(const char* def, const char* value)
+	{
+		if (uint32_t idx = Find(def); idx != defs.size())
+		{
+			values[idx] = value;
+		}
+		else
+		{
+			defs.push_back(def);
+			values.push_back(value);
+		}
+	}
+
+	void ShaderMacroSet::Remove(const char* def)
+	{
+		if (uint32_t idx = Find(def); idx != defs.size())
+		{
+			defs.erase(defs.begin() + idx);
+			values.erase(values.begin() + idx);
+		}
+	}
+
+	uint32_t ShaderMacroSet::Find(const char* def)
+	{
+		for (uint32_t i = 0;i < defs.size(); i++)
+		{
+			if (defs[i] == def)
+			{
+				return i;
+			}
+		}
+		return defs.size();
+	}
+
+	gvk::ShaderMacros ShaderMacroSet::GetShaderMacros()
+	{
+		gvk::ShaderMacros macros;
+		for (uint32_t i = 0;i < defs.size();i++)
+		{
+			macros.D(defs[i].c_str(), values[i].empty() ? nullptr : values[i].c_str());
+		}
+		return macros;
+	}
+
+	gvk::RayTracingPieplineCreateInfo& RayTracingShader::OnPipelineStateCreate()
+	{
+		return pipelineCI;
+	}
+
+	bool RayTracingShader::GenerateReflection()
+	{
+		auto rayGenBindings = pipelineCI.rayGenShaderGroup[0].rayGeneration->GetDescriptorBindings().value();
+		for(auto& rmiss : pipelineCI.rayMissShaderGroup)
+		{
+			auto rayMissBindings = rmiss.rayMiss->GetDescriptorBindings().value();
+			rayGenBindings.insert(rayGenBindings.end(), rayMissBindings.begin(), rayMissBindings.end());
+		}
+		for (auto& rhit : pipelineCI.rayHitShaderGroup)
+		{
+			if (rhit.rayIntersection.anyHit != nullptr)
+			{
+				auto rayHitBindings = rhit.rayIntersection.anyHit->GetDescriptorBindings().value();
+				rayGenBindings.insert(rayGenBindings.end(), rayHitBindings.begin(), rayHitBindings.end());
+			}
+
+			if (rhit.rayIntersection.closestHit != nullptr)
+			{
+				auto rayHitBindings = rhit.rayIntersection.closestHit->GetDescriptorBindings().value();
+				rayGenBindings.insert(rayGenBindings.end(), rayHitBindings.begin(), rayHitBindings.end());
+			}
+
+			if (rhit.rayIntersection.intersection != nullptr)
+			{
+				auto rayHitBindings = rhit.rayIntersection.intersection->GetDescriptorBindings().value();
+				rayGenBindings.insert(rayGenBindings.end(), rayHitBindings.begin(), rayHitBindings.end());
+			}
+		}
+
+		std::string msg;
+		if (!m_Reflection.RayTracingReflectionFromBindings(rayGenBindings, msg))
+		{
+			KBS_WARN("fail to generate reflection for shader {} reason {}", m_ShaderPath.c_str(), msg.c_str());
+			return false;
+		}
+
+		return true;
+	}
+
 }

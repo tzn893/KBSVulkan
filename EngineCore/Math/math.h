@@ -36,6 +36,11 @@ namespace kbs
 			return Angle::FromRadius(glm::acos(angle));
 		}
 
+		inline Angle asin(float angle)
+		{
+			return Angle::FromRadius(glm::asin(angle));
+		}
+
 		inline float cos(Angle angle)
 		{
 			return ::cos(angle.radius);
@@ -183,7 +188,7 @@ namespace kbs
 
 		inline quat axisAngle(vec3 axis, Angle angle)
 		{
-			return glm::angleAxis(angle.radius, axis);
+			return glm::angleAxis(angle.radius, glm::normalize(axis));
 		}
 
 		inline quat euler2Quat(vec3 euler)

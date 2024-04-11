@@ -4,6 +4,7 @@
 
 #include "Scene/UUID.h"
 #include "Scene/entt/entt.h"
+#include "Scene/Components.h"
 #include "Common.h"
 
 // copied mostly from hazel
@@ -18,6 +19,11 @@ namespace kbs
 		~Scene();
 
 		static ptr<Scene> Copy(ptr<Scene> other);
+
+		Entity CreateMainCamera(const TransformComponent& trans, const CameraComponent& camera);
+		Entity GetMainCamera();
+
+		TransformComponent CreateTransform(opt<Entity> parent,const vec3& position, const quat& rot, const vec3& scale);
 
 		Entity CreateEntity(const std::string& name = std::string());
 		Entity CreateEntityWithUUID(UUID uuid, const std::string& name = std::string());
@@ -41,6 +47,7 @@ namespace kbs
 		entt::registry	m_Registry;
 		std::unordered_map<UUID, entt::entity> m_EntityMap;
 		UUID m_Root;
+		opt<UUID> m_MainCamera ;
 
 		friend class Entity;
 		friend class SceneSerializer;

@@ -1,0 +1,36 @@
+#pragma kbs_shader
+#pragma kbs_compute_begin
+
+#version 450
+#include "surfelCommon.glsl"
+
+
+layout(set = 0, binding = 0) buffer _SurfelAccelerationStructure
+{
+#ifndef SURFEL_SPARSE_OPTIMIZED
+    SurfelAccelerationStructure accelStruct;
+#else
+    SurfelAccelerationStructureV2 accelStruct;
+#endif
+};
+
+layout(set = 0, binding = 1) uniform _SurfelGlobalUniform
+{
+    SurfelGlobalUniform globalUniform;
+};
+
+
+layout (local_size_x = 256,local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    int idx = int(gl_GlobalInvocationID.x);
+    accelStruct.cellIndexCount = 0;
+    #ifdef SURFEL_SPARSE_OPTIMIZED
+        accelStruct.cellDirtyFlag[idx] = 0;
+    #endif
+}
+
+
+
+#pragma kbs_compute_end
