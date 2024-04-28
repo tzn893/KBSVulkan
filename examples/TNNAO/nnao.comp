@@ -1,0 +1,194 @@
+#pragma kbs_shader
+#pragma kbs_compute_begin
+
+#version 450
+
+#define PI 3.14159265359
+
+/* Full/Half Filter Width */
+#define FW 31
+#define HW ((FW-1)/2)
+
+/* Comment out to disable new sampling method */
+#define SPIRAL_SAMPLER
+
+#ifdef SPIRAL_SAMPLER
+//#define NSAMPLES 8
+#define NSAMPLES 64
+//#define NSAMPLES 32
+#else
+//#define NSAMPLES 32
+#define NSAMPLES 64
+//#define NSAMPLES 128
+#endif
+
+layout(set = 1, binding = 0) uniform sampler2D gbufferNormal;
+layout(set = 1, binding = 1) uniform sampler2D gbufferDepth;
+layout(set = 1, binding = 2) uniform sampler2D F0;
+layout(set = 1, binding = 3) uniform sampler2D F1;
+layout(set = 1, binding = 4) uniform sampler2D F2;
+layout(set = 1, binding = 5) uniform sampler2D F3;
+layout(set = 1, binding = 6, rgba8) uniform image2D colorImage;
+
+const vec4 F0a = vec4( 2.364370,  2.399485,  0.889055,  4.055205);
+const vec4 F0b = vec4(-1.296360, -0.926747, -0.441784, -3.308158);
+const vec4 F1a = vec4( 1.418117,  1.505182,  1.105307,  1.728971);
+const vec4 F1b = vec4(-0.491502, -0.789398, -0.328302, -1.141073);
+const vec4 F2a = vec4( 1.181042,  1.292263,  2.136337,  1.616358);
+const vec4 F2b = vec4(-0.535625, -0.900996, -0.405372, -1.030838);
+const vec4 F3a = vec4( 1.317336,  2.012828,  1.945621,  5.841383);
+const vec4 F3b = vec4(-0.530946, -1.091267, -1.413035, -3.908190);
+
+const vec4  Xmean = vec4( 0.000052, -0.000003, -0.000076,  0.004600);
+const vec4  Xstd  = vec4( 0.047157,  0.052956,  0.030938,  0.056321);
+const float Ymean =  0.000000;
+const float Ystd  =  0.116180;
+
+const mat4 W1 = mat4(
+ -0.147624, -0.150471,  0.154306, -0.006904,
+  0.303306,  0.057305, -0.240071,  0.036727,
+  0.009158, -0.371759, -0.259837,  0.302215,
+ -0.111847, -0.183312,  0.044680, -0.190296);
+
+const mat4 W2 = mat4(
+  0.212815,  0.028991,  0.105671, -0.111834,
+  0.316173, -0.166099,  0.058121, -0.170316,
+  0.135707, -0.478362, -0.156021, -0.413203,
+ -0.097283,  0.189983,  0.019879, -0.260882);
+
+const vec4 W3 = vec4( 0.774455,  0.778138, -0.318566, -0.523377);
+
+const vec4  b0 = vec4( 0.428451,  2.619065,  3.756697,  1.636395);
+const vec4  b1 = vec4( 0.566310,  1.877808,  1.316716,  1.091115);
+const vec4  b2 = vec4( 0.033848,  0.036487, -1.316707, -1.067260);
+const float b3 =  0.151472;
+
+const vec4  alpha0 = vec4( 0.326746, -0.380245,  0.179183,  0.104307);
+const vec4  alpha1 = vec4( 0.255981,  0.009228,  0.211068,  0.110055);
+const vec4  alpha2 = vec4(-0.252365,  0.016463, -0.232611,  0.069798);
+const float alpha3 = -0.553760;
+
+const vec4  beta0 = vec4( 0.482399,  0.562806,  0.947146,  0.460560);
+const vec4  beta1 = vec4( 0.670060,  1.090481,  0.461880,  0.322837);
+const vec4  beta2 = vec4( 0.760696,  1.016398,  1.686991,  1.744554);
+const float beta3 =  0.777760;
+
+layout (local_size_x = 16,local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0,binding = 0) uniform Uniform 
+{ 
+    mat4 invProjection;
+    mat4 projection;
+    mat4 invView;
+    mat4 view;
+    vec3 cameraPosition;
+    int  lightCount;
+
+    int screenWidth;
+    int screenHeight;
+    float radius;
+} uni;
+
+
+float perspective_depth(float d, float n, float f) {
+  return -((2 * n) / d - f - n) / (f - n);
+}
+ 
+vec3 camera_space(vec2 texcoord,float depth) {
+    vec3  ndc = vec3(texcoord * 2.0 - 1.0, depth);
+    vec4  clip = vec4(ndc, 1.0);
+
+    vec4 view = uni.invProjection * clip;
+
+    return view.xyz / view.w;
+}
+
+vec3 rand(vec3 seed){
+  return 2.0*fract(sin(dot(seed, vec3(12.9898, 78.233, 21.317))) * 
+  vec3(43758.5453, 21383.21227, 20431.20563))-1.0;
+}
+
+vec4 prelu(vec4 x, vec4 alpha, vec4 beta) {
+  return beta * max(x, 0.0) + alpha * min(x, 0.0);
+}
+
+float prelu(float x, float alpha, float beta) {
+  return beta * max(x, 0.0) + alpha * min(x, 0.0);
+}
+
+vec2 spiral(float t, float l, float o) {
+  return t * vec2(cos(l*2*PI*(t+o)), sin(l*2*PI*(t+o)));
+}
+
+void main() {
+  ivec2 pixelIdx = ivec2(gl_GlobalInvocationID.xy);
+  if(pixelIdx.x >= uni.screenWidth || pixelIdx.y >= uni.screenHeight)
+  {
+      return;
+  }
+  
+  vec2 pixelCenter = vec2(pixelIdx) + vec2(0.5);
+  vec2 fTexcoord        = pixelCenter /  vec2(uni.screenWidth, uni.screenHeight);
+
+  //vec4 midl = texture2D(gbuffer, fTexcoord);
+  
+  float depth = texture(gbufferDepth, fTexcoord).r;
+  vec3  normal = normalize(texture(gbufferNormal, fTexcoord).rgb);
+  
+  vec3 base = camera_space(fTexcoord, depth);
+  vec3 seed = rand(base);
+  
+  /* First Layer */
+  vec4 H0 = vec4(0);
+  
+#ifdef SPIRAL_SAMPLER
+  
+  /* New Faster Sampler Method */
+  for (int i = 0; i < NSAMPLES; i++) {    
+    float scale = (PI/4) * (FW*FW) * ((float(i+1)/float(NSAMPLES+1))/(NSAMPLES/2));
+    vec2 indx = spiral(float(i+1)/float(NSAMPLES+1), 2.5, 2*PI*seed.x);
+    
+#else
+
+  /* Old Slower Sampler Method */
+  for (int i = -HW; i <= HW; i++)
+  for (int j = -HW; j <= HW; j++) {
+    if (mod(j+(i*(HW*2+1)), (((FW+1)*(FW+1))/NSAMPLES)+1) != 0) { continue; }
+    if (i*i+j*j > HW*HW) { continue; }
+    float scale = (((FW+1)*(FW+1))/NSAMPLES)+1;
+    vec2 indx = (vec2(i, j) + seed.xy) / HW;
+    
+#endif
+  
+    vec4 next = uni.projection * vec4(base + uni.radius * (vec3(indx, 0)), 1);
+    vec2 coord = ((next.xy / next.w)+1)/2;
+    vec3 norm = texture(gbufferNormal, coord).xyz;
+    float dep = texture(gbufferDepth, coord).r;
+
+    vec3 actu = camera_space(coord, dep);
+    vec2 fltr = (indx * HW + HW + 0.5) / (HW*2+2);
+    
+    vec4 X = 
+      (1 - clamp(length(actu - base) / uni.radius, 0, 1)) * 
+      vec4(norm - normal, (actu.z - base.z) / uni.radius);    
+
+    H0 += scale * transpose(mat4(
+      texture(F0, fltr) * F0a + F0b, texture(F1, fltr) * F1a + F1b,
+      texture(F2, fltr) * F2a + F2b, texture(F3, fltr) * F3a + F3b)) * ((X - Xmean) / Xstd);
+  }
+  
+  H0 = prelu(H0 + b0, alpha0, beta0);
+  
+  /* Other Layers */
+  
+  vec4  H1 = prelu(W1 * H0 + b1, alpha1, beta1);
+  vec4  H2 = prelu(W2 * H1 + b2, alpha2, beta2);
+  float Y  = prelu(dot(W3, H2) + b3, alpha3, beta3);
+  
+  /* Output */
+  
+  vec4 colorOut = vec4(1.0-vec3(clamp(Y * Ystd + Ymean, 0.0, 1.0)), 1.0);
+  imageStore(colorImage, pixelIdx, colorOut);
+} 
+
+#pragma kbs_compute_end

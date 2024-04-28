@@ -78,6 +78,7 @@ namespace kbs
 		} type;
 
 		vec3 intensity;
+		
 		union 
 		{
 			struct 
@@ -92,6 +93,15 @@ namespace kbs
 				float area;
 			} area;
 		};
+
+		struct
+		{
+			bool  castShadow;
+			float distance;
+			float bias;
+			float windowWidth;
+			float windowHeight;
+		} shadowCaster;
 		
 		LightComponent() = default;
 		LightComponent(const LightComponent&) = default;
@@ -129,14 +139,53 @@ namespace kbs
 
 	struct CameraComponent
 	{
-		float m_Far, m_Near, m_AspectRatio, m_Fov;
+		enum CameraType
+		{
+			Perspective,
+			Orthogonal
+		} m_Type = Perspective;
+
+		float m_Far = 0, m_Near = 0;
+		
+		float m_AspectRatio = 0;
+		float m_Width = 0;
+		
+		float m_Fov = 0;
+		float m_Height = 0;
 
 		CameraComponent() = default;
-		CameraComponent(const CameraComponent& comp) = default;
+		CameraComponent(const CameraComponent& comp)
+		{
+			m_Fov = comp.m_Fov;
+			m_Height = comp.m_Height;
+			m_Width = comp.m_Width;
+			m_AspectRatio = comp.m_AspectRatio;
+
+			m_Far = comp.m_Far;
+			m_Near = comp.m_Near;
+			m_Type = comp.m_Type;
+		}
 
 		CameraComponent(float cameraFar, float cameraNear, float cameraAspect, float cameraFov)
-			:m_Far(cameraFar), m_Near(cameraNear), m_AspectRatio(cameraAspect), m_Fov(cameraFov) 
+			:m_Far(cameraFar), m_Near(cameraNear), m_AspectRatio(cameraAspect), m_Fov(cameraFov),m_Type(CameraType::Perspective)
 		{}
+
+		static CameraComponent OrthogonalCamera(float cameraFar, float cameraNear, float width, float height)
+		{
+			CameraComponent cameraComponent;
+			cameraComponent.m_Width = width / 2;
+			cameraComponent.m_Height = height / 2;
+			cameraComponent.m_Type = CameraType::Orthogonal;
+			cameraComponent.m_Far = cameraFar;
+			cameraComponent.m_Near = cameraNear;
+
+			return cameraComponent;
+		}
+
+		static CameraComponent PerspectiveCamera(float cameraFar, float cameraNear, float aspect, float fov)
+		{
+			return CameraComponent(cameraFar, cameraNear, aspect, fov);
+		}
 	};
 
 	

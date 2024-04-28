@@ -5,6 +5,10 @@
 /*
  * Linear interpolate between 3 vectors
  */
+
+#ifndef PT_MATH_GLSL
+#define PT_MATH_GLSL
+
 vec3 mix(vec3 a, vec3 b, vec3 c, vec3 barycentrics) 
 {
 	return a * barycentrics.x + b * barycentrics.y + c * barycentrics.z;
@@ -207,3 +211,5 @@ vec3 uniformSampleSphere()
 
 	return vec3(x, y, z);
 }
+
+#endif

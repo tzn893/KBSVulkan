@@ -26,13 +26,13 @@
 #include "surfelCommon.glsl"
 
 // clang-format off
-layout(location = 0) rayPayloadEXT hitPayload prd_o;
+layout(location = 0) rayPayloadEXT RayPayload payload;
 
-layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 0) uniform accelerationStructureEXT TLAS;
 
 layout(set = 0, binding = 4) uniform _GlobalUniform
 {
-  GlobalUniform globalUniform;
+  	SurfelUniform ubo;
 };
 
 
@@ -46,6 +46,63 @@ layout(set = 2, binding = 1) buffer _SurfelIndexBuffer
     SurfelIndexBuffer surfelIdxBuffer;
 };
 
+vec3 tracePath(Ray ray, uint rayFlags)
+{
+	float tMin     = MINIMUM;
+	float tMax     = INFINITY;
+
+	
+	vec3 beta = vec3(1);
+	vec3 absorption = vec3(0.0);
+	vec3 pathRadiance = vec3(0);
+	BsdfSample bsdf;
+
+	int counter = 0;
+
+	for (uint j = 0; j < ubo.maxDepth; ++j)
+	{
+		
+
+		payload.depth = j;
+		payload.stop = false;
+		payload.radiance = pathRadiance;
+		payload.beta = beta;
+		payload.ray = ray;
+		payload.bsdf = bsdf;
+		payload.absorption = absorption;
+
+		// debugPrintfEXT(" %d, origin (%f,%f,%f), tMin %f,direction (%f,%f,%f), tMax %f ", rayFlags, ray.origin.x, ray.origin.y, ray.origin.z, tMin, 
+		//	ray.direction.x, ray.direction.y, ray.direction.z, tMax);
+		// debugPrintfEXT("any gen");
+
+		traceRayEXT(
+				TLAS,           // acceleration structure
+				rayFlags,       // rayFlags
+				0xFF,           // cullMask
+				0,              // sbtRecordOffset
+				0,              // sbtRecordStride
+				0,              // missIndex
+				ray.origin,//vec3(0, -1, 0),//,     // ray origin
+				tMin,           // ray min range
+				ray.direction,  // ray direction
+				tMax,           // ray max range
+				0               // payload (location = 0)
+		);
+
+		pathRadiance = payload.radiance;
+		beta = payload.beta;		
+		ray = payload.ray;
+		bsdf = payload.bsdf;
+		absorption = payload.absorption;
+		
+
+		if (payload.stop) break;
+	}
+
+	return pathRadiance;
+}
+
+
 void main()
 {
   int idx = int(gl_LaunchIDEXT.x);
@@ -53,6 +110,8 @@ void main()
   {
     return;
   }
+
+  seed = tea(gl_LaunchIDEXT.y * gl_LaunchIDEXT.x + gl_LaunchIDEXT.x, ubo.frame);
   
   int surfelIdx = surfelIdxBuffer.liveSurfelIdx[idx];
 
@@ -62,34 +121,19 @@ void main()
   
   if(weight > 65536.0) return;
 
-  vec4 dirW = sampleConsineDistribution(vec2(float(idx) / 65536.0, 0.0), normal, float(globalUniform.currentFrame));
+  vec4 dirW = sampleConsineDistribution(vec2(float(idx) / 65536.0, 0.0), normal, seed);
   vec3 direction = dirW.xyz;
 
-  uint  rayFlags = gl_RayFlagsOpaqueEXT;
   float tMin     = 0.001;
   float tMax     = 10000.0;
 
-  prd_o.attenuation = dot(dirW.xyz, normal) / dirW.w * vec3(1.0);
-  
-  traceRayEXT(topLevelAS,     // acceleration structure
-              rayFlags,       // rayFlags
-              0xFF,           // cullMask
-              0,              // sbtRecordOffset
-              0,              // sbtRecordStride
-              0,              // missIndex
-              origin.xyz,     // ray origin
-              tMin,           // ray min range
-              direction.xyz,  // ray direction
-              tMax,           // ray max range
-              0               // payload (location = 0)
-  );
+  Ray r;
+  r.origin = origin;
+  r.direction = dirW.xyz;
+  vec3 radiance = tracePath(r, gl_RayFlagsOpaqueEXT);
 
-  // if(surfelIdx == 65533)
-  // {
-  //   debugPrintfEXT("position %f,%f,%f",origin.x, origin.y, origin.z);
-  //   debugPrintfEXT("direction %f,%f,%f", direction.x, direction.y, direction.z);
-  // }
-  
-  surfels.surfels[surfelIdx].radianceWeight += vec4(prd_o.radiance, 1.0);
-  //imageStore(o_image, ivec2(gl_LaunchIDEXT.xy), vec4(prd.color , 1.0));
+  radiance *= dot(dirW.xyz, normal) / dirW.w;
+
+
+  surfels.surfels[surfelIdx].radianceWeight += vec4(payload.radiance, 1.0);
 }

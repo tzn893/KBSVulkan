@@ -178,14 +178,17 @@ void kbs::PTRenderer::OnSceneRender(ptr<Scene> scene)
 			std::vector<PTMaterial> ptMaterials;
 			ptMaterials.reserve(materialSets.size());
 
+			uint32_t i = 0;
 			for (const RTMaterialSetDesc& mat : materialSets)
 			{
+				
 				PTMaterial ptMat;
 				memcpy(&ptMat.albedo, &mat.pbrParameters, sizeof(PBRMaterialParameter));
 
 				ptMat.albedoTexID = mat.diffuseTexIdx;
 				ptMat.normalmapTexID = mat.normalTexIdx;
 				ptMat.metallicRoughnessTexID = mat.metallicTexIdx;
+
 				ptMaterials.push_back(ptMat);
 			}
 

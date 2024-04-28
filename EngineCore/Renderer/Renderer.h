@@ -133,10 +133,10 @@ namespace kbs
 
 		ptr<vkrg::RenderPass> InitializePass(Renderer* renderer, ptr<gvk::Context> ctx,
 			ptr<vkrg::RenderGraph> graph, RendererAttachmentDescriptor& desc,
-			const std::string& name);
+			const std::string& name, opt<vkrg::RenderPassExtension> ext);
 
-		void SetTargetScene(ptr<Scene> scene);
-		void SetTargetCamera(const RenderCamera& camera);
+		virtual void SetTargetScene(ptr<Scene> scene);
+		virtual void SetTargetCamera(const RenderCamera& camera);
 
 		virtual void OnSceneRender(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd, 
 			RenderCamera& camera, ptr<Scene> scene) = 0;
@@ -213,12 +213,13 @@ namespace kbs
 	protected:
 
 		template<typename RendererPassType>
-		ptr<RendererPassType> CreateRendererPass(RendererAttachmentDescriptor& desc, const std::string& name)
+		ptr<RendererPassType> CreateRendererPass(RendererAttachmentDescriptor& desc, const std::string& name, opt<vkrg::RenderPassExtension> ext = {})
 		{
 			static_assert(std::is_base_of_v<RendererPass, RendererPassType>, "RendererPassType must be derived from RendererPass");
 
 			ptr<RendererPassType> rendererPass = std::make_shared<RendererPassType>();
-			ptr<vkrg::RenderPass> rgRenderPass = rendererPass->InitializePass(this, m_Context, m_Graph, desc, name);
+			ptr<vkrg::RenderPass> rgRenderPass = rendererPass->InitializePass(this, m_Context, m_Graph, desc, name, ext);
+
 			rendererPass->AttachRenderPass(rgRenderPass.get());
 			rgRenderPass->AttachInterface(rendererPass);
 
@@ -259,16 +260,24 @@ namespace kbs
 		virtual bool InitRenderGraph(ptr<kbs::Window> window, ptr<vkrg::RenderGraph> renderGraph) = 0;
 		virtual void OnSceneRender(ptr<Scene> scene) {}
 
+		static constexpr uint32_t				m_CameraDescriptorSetPoolSize = 64;
 		static constexpr uint32_t				m_ObjectPoolSize = 1024;
-		static constexpr uint32_t				m_ObjectCameraPoolSize = m_ObjectPoolSize + 1;
+		static constexpr uint32_t				m_ObjectCameraPoolSize = m_ObjectPoolSize + m_CameraDescriptorSetPoolSize;
+
+
+		static constexpr uint32_t				m_CameraUBOAlignedSize = 320;
+
 		VkDescriptorSetLayout					m_ObjectDescriptorSetLayout;
 		VkDescriptorPool						m_ObjectCameraDescriptorPool;
 		std::vector<VkDescriptorSet>			m_ObjectDescriptorSetPool;
+		
 		ptr<RenderBuffer>						m_ObjectUBOPool;
+		uint32_t								m_ObjectUBOPoolCounter;
 
 		// TODO camera buffer and camera descriptor set
+		uint32_t								m_CameraDescriptorSetCounter = 0;
 		ptr<RenderBuffer>						m_CameraBuffer;
-		VkDescriptorSet							m_CameraDescriptorSet;
+		std::vector<VkDescriptorSet>			m_CameraDescriptorSets;
 		VkDescriptorSetLayout					m_CameraDescriptorSetLayout;
 
 		ptr<gvk::DescriptorAllocator>			m_APIDescriptorSetAllocator;

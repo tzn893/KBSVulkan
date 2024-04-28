@@ -14,5 +14,9 @@ struct VertexOutput
     vec3 worldPos;
     vec3 tangent;
 };
+
+
+
+
 #endif
 

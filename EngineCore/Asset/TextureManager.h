@@ -21,6 +21,11 @@ namespace kbs
 		std::string m_Path;
 	};
 
+	struct TextureLoadOption
+	{
+		bool generateMipmap = false;
+	};
+
 	class TextureManager
 	{
 	public:
@@ -29,7 +34,7 @@ namespace kbs
 		void LoadDefaultTextures(RenderAPI& api);
 
 		opt<TextureID> Attach(ptr<gvk::Image> image, VkSampler sampler, VkImageView view, const std::string& path);
-		// opt<TextureID> Load(const std::string& path, RenderAPI& api, GvkSamplerCreateInfo samplerInfo = GvkSamplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR));
+		opt<TextureID> Load(const std::string& path, RenderAPI& api, opt<TextureLoadOption> option, opt<GvkSamplerCreateInfo> samplerInfo);
 		opt<ptr<ManagedTexture>> GetTextureByID(TextureID id);
 		opt<ptr<ManagedTexture>> GetTextureByPath(const std::string& path);
 

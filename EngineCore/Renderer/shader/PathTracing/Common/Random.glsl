@@ -1,3 +1,6 @@
+#ifndef PT_RANDOM_GLSL
+#define PT_RANDOM_GLSL
+
 #extension GL_EXT_control_flow_attributes : require
 
 // Generate a random unsigned int from two unsigned int values, using 16 pairs
@@ -35,3 +38,5 @@ float rnd(inout uint prev)
 {
   return (float(lcg(prev)) / float(0x01000000));
 }
+
+#endif

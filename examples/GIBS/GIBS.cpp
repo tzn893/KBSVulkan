@@ -65,7 +65,6 @@ void GIBSApplication::BeforeRun()
 	Singleton::GetInstance<AssetManager>()->GetTextureManager()->LoadDefaultTextures(api);
 	scene = std::make_shared<Scene>();
 
-	renderer->ResizeScreen(m_WindowWidth, m_WindowHeight);
 	ptr<GraphicsShader> mrtShader = renderer->GetDeferredPass()->GetMRTShader();
 
 
@@ -101,7 +100,7 @@ void GIBSApplication::BeforeRun()
 	// add main light to scene
 	{
 		LightComponent light;
-		light.type = LightComponent::ConstantEnvironment;
+		light.type = LightComponent::LightType::ConstantEnvoriment;
 		light.intensity = kbs::vec3(2.0, 2.0, 2.0);
 
 		TransformComponent trans = scene->CreateTransform({}, kbs::vec3(0, 0, 0), kbs::quat(1, 0, 0, 0), kbs::vec3(1, 1, 1));

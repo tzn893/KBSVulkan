@@ -30,6 +30,16 @@ namespace kbs
 		//GetShaderFileManager()->AddSearchPath(KBS_ROOT_DIRECTORY"/Renderer/shader");
 
 		m_Context = ctx;
+
+		ShaderID shaderID = UUID::GenerateUncollidedID(m_Shaders);
+		ShaderInfo depthOutputOnlyInfo;
+		depthOutputOnlyInfo.depthStencilState.enable_depth_stencil = true;
+		ptr<Shader> depthOnlyShader = std::make_shared<DepthOutputOnlyShader>(depthOutputOnlyInfo, this, RenderPass_Shadow, shaderID);
+
+		KBS_ASSERT(depthOnlyShader->GenerateReflection(), "fail to generate reflection information for depth only shader");
+
+		m_Shaders[shaderID] = depthOnlyShader;
+		m_DepthOnlyShader = shaderID;
 	}
 
 
@@ -238,6 +248,11 @@ namespace kbs
 		return m_ShaderPathTable.count(validAbsolutePath);
 	}
 
+	ptr<kbs::GraphicsShader> ShaderManager::GetDepthOnlyShader()
+	{
+		return std::dynamic_pointer_cast<kbs::GraphicsShader>(m_Shaders[m_DepthOnlyShader]);
+	}
+
 	opt<ShaderInfo> ShaderManager::LoadAndPreParse(const std::string& filePath, std::string& fileabsolutePath)
 	{
 		std::string validAbsolutePath;
@@ -325,7 +340,7 @@ namespace kbs
 
 	bool Shader::IsGraphicsShader()
 	{
-		return m_ShaderType == ShaderType::Surface || m_ShaderType == ShaderType::CustomVertex || m_ShaderType == ShaderType::MeshShader;
+		return m_ShaderType == ShaderType::Surface || m_ShaderType == ShaderType::CustomVertex || m_ShaderType == ShaderType::MeshShader || m_ShaderType == ShaderType::DepthOutputOnly;
 	}
 
 	bool Shader::IsComputeShader()
@@ -1023,6 +1038,29 @@ namespace kbs
 
 		std::string msg;
 		if (!m_Reflection.RayTracingReflectionFromBindings(rayGenBindings, msg))
+		{
+			KBS_WARN("fail to generate reflection for shader {} reason {}", m_ShaderPath.c_str(), msg.c_str());
+			return false;
+		}
+
+		return true;
+	}
+
+	void DepthOutputOnlyShader::OnPipelineStateCreate(GvkGraphicsPipelineCreateInfo& info)
+	{
+		AssignRFDState(info);
+		info.vertex_shader = m_Manager->m_StandardVertexShader;
+	}
+
+	bool DepthOutputOnlyShader::GenerateReflection()
+	{
+		ptr<gvk::Shader> vert = m_Manager->m_StandardVertexShader;
+
+		std::vector<SpvReflectDescriptorBinding*> vert_bindings = vert->GetDescriptorBindings().value();
+
+		std::string msg;
+		bool success = m_Reflection.GraphicsReflectionFromBindings(vert_bindings, msg);
+		if (!success)
 		{
 			KBS_WARN("fail to generate reflection for shader {} reason {}", m_ShaderPath.c_str(), msg.c_str());
 			return false;

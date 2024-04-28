@@ -65,7 +65,7 @@ void PathTracingApplication::BeforeRun()
 	Singleton::GetInstance<AssetManager>()->GetTextureManager()->LoadDefaultTextures(api);
 	scene = std::make_shared<Scene>();
 
-	renderer->SetMaxDepth(2);
+	renderer->SetMaxDepth(3);
 
 	{
 		ModelLoadOption loadOpt;
@@ -114,7 +114,7 @@ void PathTracingApplication::BeforeRun()
 		{
 			LightComponent env;
 			env.type = LightComponent::ConstantEnvoriment;
-			env.intensity = kbs::vec3(0.3, 0.3, 0.3);
+			env.intensity = kbs::vec3(2.0, 2.0, 2.0);
 
 			TransformComponent trans = scene->CreateTransform({}, kbs::vec3(0.0, 0.0, 0), kbs::quat(1, 0, 0, 0), kbs::vec3(1, 1, 1));
 			auto light = scene->CreateEntity("light1");
@@ -122,6 +122,18 @@ void PathTracingApplication::BeforeRun()
 			light.AddComponent<TransformComponent>(trans);
 		}
 		
+		/*
+		{
+			LightComponent env;
+			env.type = LightComponent::Directional;
+			env.intensity = kbs::vec3(10.0, 10.0, 10.0);
+
+			TransformComponent trans = scene->CreateTransform({}, kbs::vec3(0.0, 0.0, 0), kbs::math::axisAngle(kbs::vec3(1,0,0), kbs::Angle::FromDegree(87)), kbs::vec3(1, 1, 1));
+			auto light = scene->CreateEntity("light2");
+			light.AddComponent<LightComponent>(env);
+			light.AddComponent<TransformComponent>(trans);
+		}
+		*/
 	}
 }
 

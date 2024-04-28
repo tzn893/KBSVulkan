@@ -1,6 +1,8 @@
 /*
  *  Global structure used in shaders
  */
+#ifndef PT_STRUCTURE_GLSL
+#define PT_STRUCTURE_GLSL
 
  #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
@@ -21,6 +23,7 @@ int AREA_LIGHT = 0;
 int SPHERE_LIGHT = 1;
 int DIRECTIONAL_LIGHT = 2;
 int CONSTANT_LIGHT = 3;
+int POINT_LIGHT = 4;
 
 // Integrators types
 int PATH_TRACER_DEFAULT = 0;
@@ -105,6 +108,8 @@ struct LightSample
 	vec3 position;
 	vec3 emission; 
 	float pdf;
+	bool  isInfinite;
+	bool  isDelta;
 };
 
 struct BsdfSample
@@ -136,3 +141,5 @@ struct ObjDesc
 	int indexPrimitiveOffset;
 	int vertexOffset;
 };
+
+#endif

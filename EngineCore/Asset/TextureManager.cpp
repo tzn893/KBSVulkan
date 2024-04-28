@@ -1,6 +1,9 @@
 #include "TextureManager.h"
 #include <filesystem>
 #include "Renderer/RenderAPI.h"
+#include "stb_image.h"
+#include "Core/FileSystem.h"
+#include "Asset/AssetManager.h"
 namespace fs = std::filesystem;
 
 namespace kbs
@@ -82,7 +85,71 @@ namespace kbs
         return id;
     }
 
-    /*
+	kbs::opt<kbs::TextureID> TextureManager::Load(const std::string& path, RenderAPI& api, opt<TextureLoadOption> option, opt<GvkSamplerCreateInfo> samplerInfo /*= GvkSamplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR)*/)
+	{
+        TextureLoadOption loadOption;
+        if (option.has_value())
+        {
+            loadOption = option.value();
+        }
+        else
+        {
+            loadOption = TextureLoadOption();
+        }
+
+        GvkSamplerCreateInfo samplerCI = GvkSamplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR);
+        if (samplerInfo.has_value())
+        {
+            samplerCI = samplerInfo.value();
+        }
+
+
+        auto* fileSystem = Singleton::GetInstance<FileSystem<TextureManager>>();
+        std::string absolutePath;
+        if (auto var = fileSystem->FindAbsolutePath(path); var.has_value())
+        {
+            absolutePath = var.value();
+        }
+        else
+        {
+            return std::nullopt;
+        }
+
+        int width, height, comp = 0;
+        void* image = stbi_load(absolutePath.c_str(),&width, &height, &comp, 4);
+        GvkImageCreateInfo imageCreateInfo = GvkImageCreateInfo::Image2D(VK_FORMAT_R8G8B8A8_UNORM, width, height, 
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+		kbs::ptr<gvk::Image> gvkImage = api.CreateImage(imageCreateInfo).value();
+
+        TextureCopyInfo uploadCopyInfo;
+        uploadCopyInfo.data = image;
+        uploadCopyInfo.dataSize = width * height * comp * sizeof(char);
+        uploadCopyInfo.generateMipmap = loadOption.generateMipmap;
+
+        VkBufferImageCopy copyRegion{};
+        copyRegion.bufferOffset = 0;
+        copyRegion.imageExtent.width = width;
+        copyRegion.imageExtent.height = height;
+        copyRegion.imageExtent.depth = 1;
+        copyRegion.imageOffset = { 0 , 0, 0 };
+        copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		copyRegion.imageSubresource.baseArrayLayer = 0;
+		copyRegion.imageSubresource.layerCount = 1;
+		copyRegion.imageSubresource.mipLevel = 0;
+
+        uploadCopyInfo.copyRegions.push_back(copyRegion);
+		api.UploadImage(gvkImage, uploadCopyInfo);
+
+        samplerCI.maxLod = imageCreateInfo.mipLevels;
+        VkSampler sampler = api.CreateSampler(samplerCI).value();
+		VkImageView mainView = api.CreateImageMainView(gvkImage);
+
+		auto res = kbs::Singleton::GetInstance<kbs::AssetManager>()->GetTextureManager()->Attach(gvkImage, sampler, mainView, path);
+        return res;
+	}
+
+	/*
     opt<TextureID> TextureManager::Load(const std::string& path, RenderAPI& api, GvkSamplerCreateInfo samplerInfo)
     {
         fs::path fsPath = path;

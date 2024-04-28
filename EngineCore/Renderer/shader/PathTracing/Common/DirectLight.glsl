@@ -2,6 +2,9 @@
  * Direct light estimator
  */
 
+#ifndef PT_DIRECT_LIGHT_GLSL
+#define PT_DIRECT_LIGHT_GLSL
+
 vec3 directLight(in Material material)
 {
 	vec3 L = vec3(0);
@@ -57,8 +60,8 @@ vec3 directLight(in Material material)
 		lightDir = normalize(lightDir);
 
 		isShadowed = true;
-
-		// The light has to be visible from the surface. Less than 90° between vectors.
+		
+		// The light has to be visible from the surface. Less than 90ï¿½ between vectors.
 		if (dot(payload.ffnormal, lightDir) <= 0.0 || dot(lightDir, sampled.normal) >= 0.0)
 			return L;
 
@@ -68,14 +71,23 @@ vec3 directLight(in Material material)
 		if (!isShadowed)
 		{
 			vec3 F = DisneyEval(material, lightDir, bsdfSample.pdf);
-
-			float lightPdf = lightDistSq / (light.area * abs(dot(sampled.normal, lightDir)));
 			float cosTheta = abs(dot(payload.ffnormal, lightDir));
-			float misWeight = powerHeuristic(lightPdf, bsdfSample.pdf);
 
-			L += misWeight * F * cosTheta * sampled.emission / (lightPdf + EPS);
+			// debugPrintfEXT("sampled light F (%f,%f,%f) cosTheta %f emission (%f,%f,%f) light type %d" ,F.x,F.y,F.z, cosTheta, 
+			// 		sampled.emission.x,sampled.emission.y,sampled.emission.z, light.type);
+			vec3 LdivW = F * cosTheta * sampled.emission;
+			if(!sampled.isDelta)
+			{
+				float lightPdf = lightDistSq / (light.area * abs(dot(sampled.normal, lightDir)));
+				float misWeight = powerHeuristic(lightPdf, bsdfSample.pdf);
+				LdivW *= misWeight / (lightPdf + EPS);
+			}
+
+			L += LdivW;
 		}
 	}
 
 	return L;
 }
+
+#endif

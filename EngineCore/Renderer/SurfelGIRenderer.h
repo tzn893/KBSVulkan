@@ -8,6 +8,8 @@
 namespace kbs
 {
 
+	
+
 	class ClearAccelerationStructurePass : public ComputePass
 	{
 	public:
@@ -144,10 +146,10 @@ namespace kbs
 	class SurfelGIRenderer : public Renderer
 	{
 	public:
-		void ResizeScreen(uint32_t width, uint32_t height);
 		ptr<DeferredPass> GetDeferredPass();
 
 	private:
+		void ResizeScreen(uint32_t width, uint32_t height);
 		
 		virtual vkrg::RenderPassHandle GetMaterialTargetRenderPass(RenderPassFlags flag) override;
 		virtual bool InitRenderGraph(ptr<kbs::Window> window, ptr<vkrg::RenderGraph> renderGraph) override;
@@ -188,6 +190,7 @@ namespace kbs
 		uint32_t								m_ScreenWidth;
 		uint32_t								m_ScreenHeight;
 		uint32_t								m_FrameCounter = 0;
+		uint32_t								m_LightCount;
 	};
 
 }

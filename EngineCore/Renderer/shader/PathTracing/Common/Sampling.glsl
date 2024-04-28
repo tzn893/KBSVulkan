@@ -1,3 +1,6 @@
+#ifndef PT_SAMPLING_GLSL
+#define PT_SAMPLING_GLSL
+
 /*
  * Set of different sampling functions
  */
@@ -13,6 +16,9 @@ void sampleAreaLight(in Light light, out LightSample lightSample)
 	lightSample.normal   = normalize(cross(light.u, light.v));
 	lightSample.emission = light.emission * float(ubo.lights);
 	lightSample.position = light.position + u + v;
+
+	lightSample.isInfinite = false;
+	lightSample.isDelta = false;
 }
 
 void sampleSphereLight(in Light light, out LightSample lightSample)
@@ -22,7 +28,22 @@ void sampleSphereLight(in Light light, out LightSample lightSample)
 	lightSample.normal = normalize(position - light.position);
 	lightSample.emission = light.emission * float(ubo.lights);
 	lightSample.position = position;
+
+	lightSample.isInfinite = false;
+	lightSample.isDelta = false;
 }
+
+void sampleDirectionalLight(in Light light, out LightSample lightSample)
+{
+	lightSample.normal = normalize(light.position);
+	lightSample.position =  - normalize(light.position) * 1e8;
+	lightSample.emission = light.emission * float(ubo.lights);
+
+	lightSample.isInfinite = true;
+	lightSample.isDelta = true;
+}
+
+
 
 LightSample sampleLight(in Light light)
 {
@@ -32,6 +53,8 @@ LightSample sampleLight(in Light light)
 		sampleAreaLight(light, lightSample);	
 	else if(light.type == SPHERE_LIGHT)
 		sampleSphereLight(light, lightSample);
+	else if(light.type == DIRECTIONAL_LIGHT)
+		sampleDirectionalLight(light, lightSample);
 
 	return lightSample;
 }
@@ -163,3 +186,5 @@ vec3 sampleInifinitEmitter()
 	}
 	return vec3(0.0);
 }
+
+#endif

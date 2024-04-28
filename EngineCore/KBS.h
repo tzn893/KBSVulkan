@@ -23,4 +23,6 @@
 #include "Renderer/Shader.h"
 #include "Renderer/ShaderParser.h"
 
+#include "Renderer/DeferredRenderer.h"
+
 #include "Asset/AssetManager.h"

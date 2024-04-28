@@ -172,7 +172,13 @@ namespace kbs
     void Renderer::RenderSceneByCamera(ptr<Scene> scene, RenderCamera& camera, RenderFilter filter, VkCommandBuffer cmd)
     {
         AssetManager* assetManager = Singleton::GetInstance<AssetManager>();
-        m_CameraBuffer->GetBuffer()->Write(&camera.GetCameraUBO(), 0, sizeof(CameraUBO));
+        
+        uint32_t cameraBufferIndex = 0;
+        {
+            cameraBufferIndex = m_CameraDescriptorSetCounter++;
+			m_CameraBuffer->GetBuffer()->Write(&camera.GetCameraUBO(), cameraBufferIndex * m_CameraUBOAlignedSize, m_CameraUBOAlignedSize);
+        }
+        
 
         std::vector<RenderableObject> objects;
         
@@ -187,23 +193,23 @@ namespace kbs
         }
 
         scene->IterateAllEntitiesWith<RenderableComponent>
-            (
-                [&](Entity e)
+        (
+            [&](Entity e)
+            {
+                RenderableComponent render = e.GetComponent<RenderableComponent>();
+
+                for (uint32_t i = 0;i < render.passCount;i++)
                 {
-                    RenderableComponent render = e.GetComponent<RenderableComponent>();
+                    ptr<Material>  mat = assetManager->GetMaterialManager()->GetMaterialByID(render.targetMaterials[i]).value();
 
-                    for (uint32_t i = 0;i < render.passCount;i++)
+                    if (kbs_contains_flags(mat->GetRenderPassFlags(), filter.flags) && filter.shaderFilter(mat->GetShader()->GetShaderID()))
                     {
-                        ptr<Material>  mat = assetManager->GetMaterialManager()->GetMaterialByID(render.targetMaterials[i]).value();
-
-                        if (kbs_contains_flags(mat->GetRenderPassFlags(), filter.flags) && filter.shaderFilter(mat->GetShader()->GetShaderID()))
-                        {
-                            TransformComponent  trans = e.GetComponent<TransformComponent>();
-                            IDComponent idcomp = e.GetComponent<IDComponent>();
-                            objects.push_back(RenderableObject{ idcomp.ID, render.targetMaterials[i], render.renderOptionFlags[i], render.targetMesh, Transform(trans, e)});
-                        }
+                        TransformComponent  trans = e.GetComponent<TransformComponent>();
+                        IDComponent idcomp = e.GetComponent<IDComponent>();
+                        objects.push_back(RenderableObject{ idcomp.ID, render.targetMaterials[i], render.renderOptionFlags[i], render.targetMesh, Transform(trans, e)});
                     }
                 }
+            }
         );
 
         filter.renderableObjectSorter(objects);
@@ -215,8 +221,10 @@ namespace kbs
         
         for (uint32_t i = 0;i < objects.size();i++)
         {
+            uint32_t objectUBOIdx = m_ObjectUBOPoolCounter++;
+
             ObjectUBO objectUbo = objects[i].transform.GetObjectUBO();
-            m_ObjectUBOPool->GetBuffer()->Write(&objectUbo, sizeof(ObjectUBO) * i, sizeof(ObjectUBO));
+            m_ObjectUBOPool->GetBuffer()->Write(&objectUbo, sizeof(ObjectUBO) * objectUBOIdx, sizeof(ObjectUBO));
 
             ptr<Material> mat = GetMaterialByID(objects[i].targetMaterial);
             if (mat->GetShader()->GetShaderID() != bindedShaderID)
@@ -225,7 +233,7 @@ namespace kbs
                 ptr<gvk::Pipeline> shaderPipeline = m_ShaderPipelines[bindedShaderID];
                 GvkBindPipeline(cmd, shaderPipeline);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    shaderPipeline->GetPipelineLayout(), (uint32_t)ShaderSetUsage::perCamera, 1, &m_CameraDescriptorSet, 0, NULL);
+                    shaderPipeline->GetPipelineLayout(), (uint32_t)ShaderSetUsage::perCamera, 1, &m_CameraDescriptorSets[cameraBufferIndex], 0, NULL);
             }
 
             ptr<gvk::Pipeline>      materialPipeline = m_ShaderPipelines[bindedShaderID];
@@ -245,7 +253,7 @@ namespace kbs
             }
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                materialPipeline->GetPipelineLayout(), (uint32_t)ShaderSetUsage::perObject, 1, &m_ObjectDescriptorSetPool[i], 0, NULL);
+                materialPipeline->GetPipelineLayout(), (uint32_t)ShaderSetUsage::perObject, 1, &m_ObjectDescriptorSetPool[objectUBOIdx], 0, NULL);
 
             ptr<MeshGroup> meshGroup = GetMeshGroupByMesh(objects[i].targetMeshID);
             if (meshGroup->GetID() != bindedMeshGroupID)
@@ -333,7 +341,7 @@ namespace kbs
                 VkDescriptorSetLayoutBinding
                 {
                     0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                    1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT,
+                    1, VK_SHADER_STAGE_ALL,
                     NULL
                 }
             };
@@ -399,7 +407,7 @@ namespace kbs
                VkDescriptorSetLayoutBinding
                {
                    0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                   1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT,
+                   1, VK_SHADER_STAGE_ALL,
                    NULL
                }
             };
@@ -412,20 +420,23 @@ namespace kbs
 
             vkCreateDescriptorSetLayout(device, &descSetCI, NULL, &m_CameraDescriptorSetLayout);
 
+            std::vector<VkDescriptorSetLayout> cameraLayouts(m_CameraDescriptorSetPoolSize, m_CameraDescriptorSetLayout);
+            
             VkDescriptorSetAllocateInfo alloc{};
             alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-            alloc.descriptorSetCount = 1;
+            alloc.descriptorSetCount = m_CameraDescriptorSetPoolSize;
             alloc.descriptorPool = m_ObjectCameraDescriptorPool;
-            alloc.pSetLayouts = &m_CameraDescriptorSetLayout;
+            alloc.pSetLayouts = cameraLayouts.data();
 
-
-            if (VK_SUCCESS != vkAllocateDescriptorSets(device, &alloc, &m_CameraDescriptorSet))
+            m_CameraDescriptorSets.resize(m_CameraDescriptorSetPoolSize);
+            
+            if (VK_SUCCESS != vkAllocateDescriptorSets(device, &alloc, m_CameraDescriptorSets.data()))
             {
                 KBS_WARN("fail to initialize renderer reason : fail to allocate descriptor sets for object pool");
                 return false;
             }
 
-            if (auto buf = m_Context->CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(CameraUBO), GVK_HOST_WRITE_SEQUENTIAL);
+            if (auto buf = m_Context->CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, m_CameraUBOAlignedSize * m_CameraDescriptorSetPoolSize, GVK_HOST_WRITE_SEQUENTIAL);
                 buf.has_value())
             {
                 m_CameraBuffer = std::make_shared<RenderBuffer>(buf.value());
@@ -436,21 +447,24 @@ namespace kbs
                 return false;
             }
 
-            VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-            VkDescriptorBufferInfo buffer;
-            write.descriptorCount = 1;
-            write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            write.dstArrayElement = 0;
-            write.dstBinding = 0;
-            write.dstSet = m_CameraDescriptorSet;
+            for (uint32_t i = 0;i < m_CameraDescriptorSetPoolSize; i++)
+            {
+				VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+				VkDescriptorBufferInfo buffer;
+				write.descriptorCount = 1;
+				write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+				write.dstArrayElement = 0;
+				write.dstBinding = 0;
+				write.dstSet = m_CameraDescriptorSets[i];
 
-            buffer.buffer = m_CameraBuffer->GetBuffer()->GetBuffer();
-            buffer.offset = 0;
-            buffer.range = m_CameraBuffer->GetBuffer()->GetSize();
+				buffer.buffer = m_CameraBuffer->GetBuffer()->GetBuffer();
+				buffer.offset = i * m_CameraUBOAlignedSize;
+				buffer.range = sizeof(CameraUBO);
 
-            write.pBufferInfo = &buffer;
+				write.pBufferInfo = &buffer;
 
-            vkUpdateDescriptorSets(device, 1, &write, 0, NULL);
+				vkUpdateDescriptorSets(device, 1, &write, 0, NULL);
+            }
         }
 
         return true;
@@ -479,6 +493,9 @@ namespace kbs
     void kbs::Renderer::RenderScene(ptr<Scene> scene)
     {
         // TODO better way to initialize materials
+        m_ObjectUBOPoolCounter = 0;
+        m_CameraDescriptorSetCounter = 0;
+
         OnSceneRender(scene);
 
         static bool materialInitialized = false;
@@ -555,12 +572,22 @@ namespace kbs
 
     ptr<vkrg::RenderPass> RendererPass::InitializePass(Renderer* renderer, ptr<gvk::Context> ctx,
         ptr<vkrg::RenderGraph> graph, RendererAttachmentDescriptor& desc,
-        const std::string& name)
+        const std::string& name, opt<vkrg::RenderPassExtension> ext)
     {
-        auto passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Graphics).value();
+        vkrg::RenderPassHandle passHandle;
+        if (!ext.has_value())
+        {
+			passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Graphics).value();
+        }
+        else
+        {
+            passHandle = graph->AddGraphRenderPass(name.c_str(), vkrg::RenderPassType::Graphics, ext.value()).value();
+        }
+        
+        
         m_RenderPassHandle = passHandle;
 
-        Initialize(passHandle.pass, desc, ctx);
+		Initialize(passHandle.pass, desc, ctx);
 
         m_Renderer = renderer;
         m_Context = ctx;
@@ -697,6 +724,7 @@ bool kbs::Renderer::CompileRenderGraph(std::string& msg)
     options.screenHeight = m_Window->GetHeight();
     options.screenWidth = m_Window->GetWidth();
     options.setDebugName = true;
+    options.style = vkrg::RenderGraphRenderPassStyle::MergeGraphicsPasses;
 
     vkrg::RenderGraphDeviceContext ctx;
     ctx.ctx = m_Context;

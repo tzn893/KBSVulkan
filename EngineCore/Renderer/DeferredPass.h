@@ -41,12 +41,35 @@ namespace kbs
 		ptr<GraphicsShader>		m_MRTShader;
 	};
 
-	class DeferredShadingPass : public RendererPass
+	class DeferredShadingPass : public ComputePass
 	{
 	public:
+		
+		void AttachScene(ptr<Scene> scene, opt<Entity> mainLight, opt<kbs::mat4> mainLightMVP);
+		void ResizeScreen(uint32_t width, uint32_t height);
 
 	protected:
+		virtual void	Initialize(ptr<vkrg::RenderPass> pass, RendererAttachmentDescriptor& desc) override;
+		virtual void	OnDispatch(vkrg::RenderPassRuntimeContext& ctx, VkCommandBuffer cmd) override;
 
+		ptr<RenderBuffer>	m_UniformBuffer;
+		ptr<RenderBuffer>	m_LightBuffer;
+
+		vkrg::RenderPassAttachment m_ColorImageAttachment;
+		opt<vkrg::RenderPassAttachment> m_ShadowMapAttachment;
+		vkrg::RenderPassAttachment m_GBufferDepthAttachment;
+		vkrg::RenderPassAttachment m_GBufferColorAttachment;
+		vkrg::RenderPassAttachment m_GBufferNormalAttachment;
+		vkrg::RenderPassAttachment m_GBufferMaterialAttachment;
+
+		ptr<ComputeKernel>	m_DeferredShadingKernel;
+
+		VkSampler m_DefaultSampler;
+		VkSampler m_NearestSampler;
+
+		VkImageView m_WhiteImageView = NULL;
+
+		uint32_t m_Width, m_Height;
 	};
 }
 

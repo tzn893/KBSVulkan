@@ -13,7 +13,8 @@ namespace kbs
         CustomVertex,
         MeshShader,
         Compute,
-        RayTracing
+        RayTracing,
+        DepthOutputOnly
     };
 
     struct ShaderInfo

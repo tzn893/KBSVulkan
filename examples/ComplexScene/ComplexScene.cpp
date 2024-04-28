@@ -23,7 +23,6 @@ public:
 	ComplexSceneMainPass(vkrg::RenderPass* pass, vkrg::RenderPassAttachment backBuffer, vkrg::RenderPassAttachment depthBuffer, ComplexSceneRenderer* renderer)
 		:vkrg::RenderPassInterface(pass), backBuffer(backBuffer), depthBuffer(depthBuffer), renderer(renderer)
 	{
-
 	}
 
 	virtual void GetClearValue(uint32_t attachment, VkClearValue& value)

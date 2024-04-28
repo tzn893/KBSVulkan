@@ -158,6 +158,18 @@ namespace kbs
 		RenderPassFlags												m_RenderPassFlags;
 	};
 
+	class DepthOutputOnlyShader : public GraphicsShader
+	{
+	public:
+		DepthOutputOnlyShader(ShaderInfo& info ,ShaderManager* manager, RenderPassFlags flags, ShaderID id) :
+			GraphicsShader(ShaderType::DepthOutputOnly, "__/DepthOutputOnlyShader.glsl", info, manager, flags, id, 0){}
+
+		void OnPipelineStateCreate(GvkGraphicsPipelineCreateInfo& info) override;
+	private:
+		virtual bool GenerateReflection() override;
+
+	};
+
 	class SurfaceShader : public GraphicsShader
 	{
 	public:
@@ -263,6 +275,8 @@ namespace kbs
 		opt<ptr<Shader>> Get(const ShaderID& id);
 		opt<ptr<Shader>> GetByPath(const std::string& filePath);
 		bool			 Exists(const std::string& filePath);
+
+		ptr<GraphicsShader>	GetDepthOnlyShader();
 	private:
 		opt<ShaderInfo>  LoadAndPreParse(const std::string& filePath, std::string& fileabsolutePath);
 		opt<ptr<gvk::Shader>> CompileGvkShader(const std::string& preParsedShaderContent,const std::string& shaderFilePath, 
@@ -274,6 +288,9 @@ namespace kbs
 		ptr<gvk::Context>		 m_Context;
 		ShaderMacroSet			 m_Macros;
 
+		ShaderID				 m_DepthOnlyShader;
+
 		friend class SurfaceShader;
+		friend class DepthOutputOnlyShader;
 	};
 }

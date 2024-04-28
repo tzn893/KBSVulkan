@@ -32,6 +32,8 @@ namespace kbs
 		RenderCamera() = default;
 		RenderCamera(Entity e);
 		RenderCamera(const RenderCamera& camera) = default;
+
+		RenderCamera(const CameraComponent& c, const Transform& trans);
 		
 		CameraUBO		GetCameraUBO();
 		Transform&		GetCameraTransform();

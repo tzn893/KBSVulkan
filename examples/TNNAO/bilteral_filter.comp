@@ -1,0 +1,29 @@
+#version 330 core
+
+uniform sampler2D image;
+uniform float sigma_d;
+uniform float sigma_r;
+
+in vec2 TexCoords;
+out vec4 color;
+
+void main()
+{
+    int kernelSize = 5;
+    float sum = 0.0;
+    vec3 colSum = vec3(0.0);
+    vec3 center = texture(image, TexCoords).rgb;
+
+    for(int i = -kernelSize; i <= kernelSize; i++)
+    {
+        for(int j = -kernelSize; j <= kernelSize; j++)
+        {
+            vec3 tempCol = texture(image, TexCoords + vec2(i, j) / 512.0).rgb;
+            float weight = exp(-(i*i + j*j) / (2.0 * sigma_d * sigma_d)) * exp(-dot(tempCol - center, tempCol - center) / (2.0 * sigma_r * sigma_r));
+            colSum += tempCol * weight;
+            sum += weight;
+        }
+    }
+
+    color = vec4(colSum / sum, 1.0);
+}

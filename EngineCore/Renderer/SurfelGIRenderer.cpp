@@ -1,11 +1,12 @@
 #include "Renderer/SurfelGIRenderer.h"
 #include "Core/Singleton.h"
 #include "Asset/AssetManager.h"
+#include "Core/Event.h"
+
+#include "Renderer/PTRenderer.h"
 
 namespace kbs
 {
-	int frameCounter = 0;
-
 	static constexpr uint32_t m_MaxSurfelBufferCount = 65535;
 	static constexpr uint32_t m_SurfelGridCount = 64;
 	static constexpr uint32_t m_SurfelCellIndexPoolCount = 4194304;
@@ -46,34 +47,64 @@ namespace kbs
 		int surfelCount;
 	};
 
-	struct ObjectDesc
+
+
+	struct SurfelPTMaterial
+	{
+		vec4 albedo;
+		vec4 emission;
+		vec4 extinction;
+
+		float metallic;
+		float roughness;
+		float subsurface;
+		float specularTint;
+
+		float sheen;
+		float sheenTint;
+		float clearcoat;
+		float clearcoatGloss;
+
+		float transmission;
+		float ior;
+		float atDistance;
+		float __padding;
+
+		int albedoTexID;
+		int metallicRoughnessTexID;
+		int normalmapTexID;
+		int heightmapTexID;
+	};
+
+	struct SurfelPTLight
+	{
+		kbs::vec3 position{};
+		float area{};
+		kbs::vec3 emission{};
+		int type{};
+		kbs::vec3 u{};
+		float radius{};
+		kbs::vec3 v{};
+		float __padding;
+	};
+
+	struct SurfelPTObjDesc
 	{
 		uint64_t vertexBufferAddr;
 		uint64_t indiceBufferAddr;
 		uint64_t materialSetIndex;
+		int indexPrimitiveOffset;
+		int vertexOffset;
 	};
 
-	struct MaterialDesc
+	struct SurfelPTUniform
 	{
-		int baseColorTexIndex;
-		int normalTexIndex;
-		int __padding1 = 0;
-		int __padding2 = 0;
-
-		vec4 baseColor;
-	};
-
-	struct SurfelPTGlobalUniform
-	{
-		vec3 cameraPosition;
-		int  currentFrame;
-	};
-
-	struct SurfelPTLightUniform
-	{
-		vec3 lightVec;
-		int  lightType;
-		vec3 lightIntensity;
+		kbs::vec3 cameraPos;
+		uint lights;
+		bool doubleSidedLight;
+		uint spp;
+		uint maxDepth;
+		uint frame;
 	};
 
 
@@ -264,16 +295,31 @@ namespace kbs
 		api.UploadBuffer(m_SurfelIndexBuffer, indexBufferData.data(), indexSurfelBufferSize);
 		
 
+		Singleton::GetInstance<EventManager>()
+			->AddListener<WindowResizeEvent>(
+				[&](const WindowResizeEvent& e)
+				{
+					ResizeScreen(e.GetWidth(), e.GetHeight());
+				}
+		);
+
+		Singleton::GetInstance<EventManager>()
+			->AddListener<PTAccumulationUpdateEvent>(
+				[&](const PTAccumulationUpdateEvent& _)
+				{
+					m_FrameCounter = 1;
+				}
+		);
+
 		return true;
 	}
 
 	void SurfelGIRenderer::OnSceneRender(ptr<Scene> scene)
 	{
-		frameCounter++;
 		Entity mainCamera = scene->GetMainCamera();
 
 		
-		if (frameCounter == 1)
+		if (GetCurrentFrameIdx() == 0)
 		{
 			m_RTScene = std::make_shared<RTScene>(scene);
 
@@ -287,17 +333,19 @@ namespace kbs
 			
 			{
 				auto objDesc = m_RTScene->GetObjectDescs();
-				uint64_t objectDescSize = sizeof(ObjectDesc) * objDesc.size();
+				uint64_t objectDescSize = sizeof(SurfelPTObjDesc) * objDesc.size();
 
 				m_SurfelPTObjectDesc = api.CreateBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					objectDescSize, GVK_HOST_WRITE_NONE);
 
-				std::vector<ObjectDesc> surfelRTObjectDesc(objDesc.size());
+				std::vector<SurfelPTObjDesc> surfelRTObjectDesc(objDesc.size());
 				for (uint32_t i = 0; i < objDesc.size(); i++)
 				{
 					surfelRTObjectDesc[i].indiceBufferAddr = objDesc[i].indexBufferAddress;
 					surfelRTObjectDesc[i].vertexBufferAddr = objDesc[i].vertexBufferAddress;
 					surfelRTObjectDesc[i].materialSetIndex = objDesc[i].materialSetIndex;
+					surfelRTObjectDesc[i].vertexOffset = objDesc[i].vertexOffset;
+					surfelRTObjectDesc[i].indexPrimitiveOffset = objDesc[i].indexOffset / 3;
 				}
 
 				api.UploadBuffer(m_SurfelPTObjectDesc, surfelRTObjectDesc.data(), objectDescSize);
@@ -306,17 +354,18 @@ namespace kbs
 			
 			{
 				auto materialDesc = m_RTScene->GetMaterialSets();
-				uint64_t materialDescSize = materialDesc.size() * sizeof(MaterialDesc);
+				uint64_t materialDescSize = materialDesc.size() * sizeof(SurfelPTMaterial);
 
-				m_SurfelPTMaterialDesc = api.CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				m_SurfelPTMaterialDesc = api.CreateBuffer(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					materialDescSize, GVK_HOST_WRITE_NONE);
 
-				std::vector<MaterialDesc> surfelRTMaterialDesc(materialDesc.size());
+				std::vector<SurfelPTMaterial> surfelRTMaterialDesc(materialDesc.size());
 				for (uint32_t i = 0;i < materialDesc.size(); i++) 
 				{
-					surfelRTMaterialDesc[i].baseColorTexIndex = materialDesc[i].diffuseTexIdx;
-					surfelRTMaterialDesc[i].normalTexIndex = materialDesc[i].normalTexIdx;
-					surfelRTMaterialDesc[i].baseColor = vec4(1, 1, 1, 1);
+					memcpy(&surfelRTMaterialDesc[i].albedo, &materialDesc[i].pbrParameters, sizeof(materialDesc[i].pbrParameters));
+					
+					surfelRTMaterialDesc[i].albedoTexID = materialDesc[i].diffuseTexIdx;
+					surfelRTMaterialDesc[i].normalmapTexID = materialDesc[i].normalTexIdx;
 				}
 
 				api.UploadBuffer(m_SurfelPTMaterialDesc, surfelRTMaterialDesc.data(), materialDescSize);
@@ -324,8 +373,8 @@ namespace kbs
 			}
 
 			{
-				SurfelPTLightUniform lightBuffer;
 				bool mainLightFounded = false;
+				std::vector<SurfelPTLight> lights;
 
 				scene->IterateAllEntitiesWith<LightComponent>
 				(
@@ -338,46 +387,51 @@ namespace kbs
 							{
 								return;
 							}
-							/*
-							if (lComp.type == LightComponent::ConstantEnvironment)
-							{
-								lightBuffer.lightType = lComp.type;
-								lightBuffer.lightIntensity = lComp.intensity;
-								lightBuffer.lightVec = vec3();
 
-								mainLightFounded = true;
+							SurfelPTLight lightBuffer;
+
+							lightBuffer.emission = lComp.intensity;
+							lightBuffer.type = lComp.type;
+
+							if (lComp.type == LightComponent::LightType::Area)
+							{
+								lightBuffer.area = lComp.area.area;
+								lightBuffer.u = lComp.area.u;
+								lightBuffer.v = lComp.area.v;
+							}
+							else if (lComp.type == LightComponent::LightType::Sphere)
+							{
+								lightBuffer.radius = lComp.sphere.radius;
+								lightBuffer.position = trans.GetPosition();
+							}
+							else if (lComp.type == LightComponent::LightType::Directional)
+							{
+								lightBuffer.position = trans.GetFront();
 							}
 
-							if (lComp.type == LightComponent::SunLight)
-							{
-								lightBuffer.lightType = lComp.type;
-								lightBuffer.lightIntensity = lComp.intensity;
-								lightBuffer.lightVec = trans.GetFront();
-
-								mainLightFounded = true;
-							}
-							*/
-
+							lights.push_back(lightBuffer);
 						}
 				);
 				
-				m_SurfelPTLightBuffer = api.CreateBuffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-					sizeof(lightBuffer), GVK_HOST_WRITE_RANDOM);
-			
-				m_SurfelPTLightBuffer->Write(lightBuffer);
+				uint32_t lightBufferSize = sizeof(SurfelPTLight) * lights.size();
+				m_SurfelPTLightBuffer = api.CreateBuffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+					lightBufferSize, GVK_HOST_WRITE_RANDOM);
+				
+				m_LightCount = lights.size();
+				m_SurfelPTLightBuffer->Write(lights.data(), lightBufferSize, 0);
 			}
 
 			{
-				m_SurfelPTGlobalUniform = api.CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(SurfelPTGlobalUniform),
+				m_SurfelPTGlobalUniform = api.CreateBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, sizeof(SurfelPTUniform),
 					GVK_HOST_WRITE_RANDOM);
 			}
 
 
 			ptr<RayTracingKernel> rtKernel = m_SurfelPTPass->GetRayTracingKernel();
 			rtKernel->UpdateBuffer("objDesc", m_SurfelPTObjectDesc);
-			rtKernel->UpdateBuffer("lightBuffer", m_SurfelPTLightBuffer);
+			rtKernel->UpdateBuffer("Lights", m_SurfelPTLightBuffer);
 			rtKernel->UpdateBuffer("materialSets", m_SurfelPTMaterialDesc);
-			rtKernel->UpdateBuffer("globalUniform", m_SurfelPTGlobalUniform);
+			rtKernel->UpdateBuffer("ubo", m_SurfelPTGlobalUniform);
 
 			{
 				auto rtTextures = m_RTScene->GetTextureGroup();
@@ -388,13 +442,13 @@ namespace kbs
 					TextureID tex = rtTextures[i];
 					if (auto var = texManager->GetTextureByID(tex); var.has_value()) 
 					{
-						rtKernel->UpdateImageView("rtTexture", var.value()->GetMainView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+						rtKernel->UpdateImageView("rtTextures", var.value()->GetMainView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 							i, var.value()->GetSampler());
 					}
 				}
 			}
 
-			rtKernel->UpdateAccelerationStructure("topLevelAS", m_RTScene->GetSceneAccelerationStructure()->GetTlas());
+			rtKernel->UpdateAccelerationStructure("TLAS", m_RTScene->GetSceneAccelerationStructure()->GetTlas());
 		}
 		RenderCamera mainCameraRenderData(mainCamera);
 		Transform mainCameraTransform(mainCamera);
@@ -406,11 +460,15 @@ namespace kbs
 		globalUniform.viewInverse = cameraUBO.invView;
 		globalUniform.resolution = vec4(m_ScreenWidth, m_ScreenHeight, 1 / (float)m_ScreenWidth, 1 / (float)m_ScreenHeight);
 
-		SurfelPTGlobalUniform ptGlobalUniform;
-		ptGlobalUniform.cameraPosition = mainCameraTransform.GetPosition();
-		ptGlobalUniform.currentFrame = frameCounter;
+		SurfelPTUniform ptGlobalUniform;
+		ptGlobalUniform.cameraPos = cameraUBO.cameraPosition;
+		ptGlobalUniform.doubleSidedLight = 1;
+		ptGlobalUniform.frame = m_FrameCounter;
+		ptGlobalUniform.lights = m_LightCount;
+		ptGlobalUniform.maxDepth = 3;
 
 		m_SurfelPTGlobalUniform->Write(ptGlobalUniform);
+
 		vec3 cellExtent = vec3(0.8, 0.8, 0.8);
 		vec3 cameraPosition = mainCameraTransform.GetPosition();
 		
@@ -420,7 +478,7 @@ namespace kbs
 
 		globalUniform.accelerationStructurePosition = accelerationStructurePoisition;
 		globalUniform.surfelCellExtent = cellExtent;
-		globalUniform.currentFrame = m_FrameCounter++;
+		globalUniform.currentFrame = m_FrameCounter;
 		globalUniform.surfelRadius = 0.4;
 
 		globalUniform.frustrum = mainCameraRenderData.GetFrustrum();
@@ -430,6 +488,8 @@ namespace kbs
 
 		m_DeferredPass->SetTargetScene(scene);
 		m_DeferredPass->SetTargetCamera(mainCameraRenderData);
+
+		m_FrameCounter++;
 	}
 
 	void ClearAccelerationStructurePass::Initialize(ptr<vkrg::RenderPass> pass, RendererAttachmentDescriptor& desc)

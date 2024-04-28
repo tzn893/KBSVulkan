@@ -1,4 +1,7 @@
-// Edge-Avoiding À-TrousWavelet Transform for denoising
+// Edge-Avoiding ï¿½-TrousWavelet Transform for denoising
+
+#ifndef PT_DENOISER_GLSL
+#define PT_DENOISER_GLSL
 
 vec4 denoise(ivec2 coords) 
 {
@@ -55,3 +58,5 @@ vec4 denoise(ivec2 coords)
 
     return vec4(sum / cum_w, 0.f);
 }
+
+#endif 

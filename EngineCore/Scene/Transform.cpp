@@ -42,8 +42,7 @@ namespace kbs
     vec3 Transform::GetLocalFront() 
     {
         vec3 front = vec3(0, 0, 1);
-        vec4 res = math::quat2mat(m_Trans.rotation) * vec4(front, 0.f);
-        return vec3(res);
+        return m_Trans.rotation * front;
     }
 
     vec3 Transform::GetRight() 

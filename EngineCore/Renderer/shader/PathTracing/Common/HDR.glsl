@@ -1,5 +1,8 @@
 // HDR specific functions
 
+#ifndef PT_HDR_GLSL
+#define PT_HDR_GLSL
+
 float envPdf()
 {
 	vec3 direction = gl_WorldRayDirectionEXT;
@@ -33,3 +36,5 @@ vec4 envSample(inout vec3 color)
 		(pdf * ubo.hdrResolution) / (TWO_PI * PI * sin(theta))
 	);
 }
+
+#endif

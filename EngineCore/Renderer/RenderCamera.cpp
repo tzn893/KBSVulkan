@@ -10,13 +10,25 @@ namespace kbs
 		m_Camera(e.GetComponent<CameraComponent>()),m_Transform(e.GetComponent<TransformComponent>(), e)
 	{}
 
+	RenderCamera::RenderCamera(const CameraComponent& c, const Transform& trans) :
+		m_Camera(c), m_Transform(trans)
+	{}
+
 	CameraUBO kbs::RenderCamera::GetCameraUBO()
     {
 		vec3 pos = m_Transform.GetPosition();
-		glm::mat4 proj = glm::perspectiveLH_ZO( m_Camera.m_Fov, m_Camera.m_AspectRatio, m_Camera.m_Near, m_Camera.m_Far);
-		glm::mat4 view = glm::lookAt(pos, pos + m_Transform.GetFront(), glm::vec3(0, 1, 0));
+		glm::mat4 proj;
 
-		proj[1][1] *= -1;
+		if (m_Camera.m_Type == CameraComponent::CameraType::Perspective)
+		{
+			proj = glm::perspectiveLH_ZO(m_Camera.m_Fov, m_Camera.m_AspectRatio, m_Camera.m_Near, m_Camera.m_Far);
+			proj[1][1] *= -1;
+		}
+		else if(m_Camera.m_Type == CameraComponent::CameraType::Orthogonal)
+		{
+			proj = glm::orthoLH_ZO(-m_Camera.m_Width, m_Camera.m_Width, -m_Camera.m_Height, m_Camera.m_Height, m_Camera.m_Near, m_Camera.m_Far);
+		}
+		glm::mat4 view = glm::lookAt(pos, pos + m_Transform.GetFront(), glm::vec3(0, 1, 0));
 
 		CameraUBO ubo;
 		ubo.cameraPosition = pos;
